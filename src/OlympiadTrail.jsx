@@ -486,7 +486,14 @@ export default function App() {
 
   function startExam() {
     const pool = gradeQuestions.filter((q) => q.subject === setupSubject && q.grade === setupGrade);
-    const picked = shuffle(pool).slice(0, Math.min(setupCount, pool.length)).map(shuffleQuestion);
+    // Prefer questions this student hasn't seen yet in this subject, so back-to-back
+    // rounds don't repeat — only reusing already-seen ones once the pool runs out.
+    const seenIds = new Set(
+      attempts.filter((a) => a.subject === setupSubject).flatMap((a) => a.answers.map((ans) => ans.id))
+    );
+    const unseen = shuffle(pool.filter((q) => !seenIds.has(q.id)));
+    const seen = shuffle(pool.filter((q) => seenIds.has(q.id)));
+    const picked = [...unseen, ...seen].slice(0, Math.min(setupCount, pool.length)).map(shuffleQuestion);
     setExamQuestions(picked);
     setExamIndex(0);
     setExamAnswers({});
