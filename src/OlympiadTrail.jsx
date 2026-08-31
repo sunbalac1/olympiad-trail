@@ -765,6 +765,12 @@ function ProfilesScreen({
         )}
       </div>
 
+      {profiles.length > 0 && (
+        <p className="hint-text" style={{ margin: "0 0 16px" }}>
+          👉 Click your avatar below to start practicing!
+        </p>
+      )}
+
       <div className="profile-grid">
         {profiles.map((p) => (
           <div key={p.id} className="profile-card">
