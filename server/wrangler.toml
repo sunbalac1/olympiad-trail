@@ -10,5 +10,10 @@ compatibility_flags = ["nodejs_compat"]
 # For production: `wrangler secret put DATABASE_URL` and
 #   `wrangler secret put JWT_SECRET` (see server/README.md).
 
+[vars]
+# The deployed Cloudflare Pages origin — CORS only allows requests from here.
+# Update this once the Pages project's real URL is known, then `wrangler deploy` again.
+FRONTEND_ORIGIN = "https://olympiad-trail.pages.dev"
+
 [observability]
 enabled = true
