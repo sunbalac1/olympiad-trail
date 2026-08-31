@@ -6,6 +6,9 @@ review, and worked solutions.
 
 Live at **https://nalnaal.com**.
 
+For the full picture — how every piece fits together, the codebase layout,
+debugging, and a troubleshooting guide — see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+
 ## Architecture
 
 - **Frontend**: React + Vite (`src/`), deployed as a Cloudflare Worker
