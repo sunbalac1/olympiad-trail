@@ -1,0 +1,23 @@
+{
+  "name": "olympiad-trail-server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "seed": "node --env-file=.dev.vars scripts/seed.js"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "drizzle-orm": "^0.36.4",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.28.1",
+    "wrangler": "^3.99.0"
+  }
+}

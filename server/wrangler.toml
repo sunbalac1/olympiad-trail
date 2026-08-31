@@ -1,0 +1,14 @@
+name = "olympiad-trail-api"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Secrets (DATABASE_URL, JWT_SECRET) are NOT set here.
+# For local dev: create server/.dev.vars (gitignored) with:
+#   DATABASE_URL=postgresql://...neon connection string...
+#   JWT_SECRET=some-long-random-string
+# For production: `wrangler secret put DATABASE_URL` and
+#   `wrangler secret put JWT_SECRET` (see server/README.md).
+
+[observability]
+enabled = true
