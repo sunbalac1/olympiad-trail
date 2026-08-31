@@ -1,0 +1,233 @@
+The standard Grade 6 Olympiad syllabus
+
+1. Mathematics Olympiad (e.g., IMO, NSTSE) 
+The math curriculum demands mastery over calculation shortcuts, properties, and conceptual depth. [1, 7]  
+Number System & Arithmetic • Knowing Our Numbers: Large numbers up to 8 digits, estimation, place value, Roman numerals. 
+• Whole Numbers: Properties of numbers (closure, commutative, associative, distributive), number line representation. 
+• Playing with Numbers: Factors and multiples, prime/composite numbers, divisibility rules, HCF and LCM word problems. 
+• Integers: Concept of negative numbers, absolute value, operations on integers. 
+• Fractions & Decimals: Types of fractions, conversion, operations, word problems involving decimal fractions. 
+• Ratio and Proportion: Concept of ratio, unitary method, direct proportions. 
+• Commercial Math: Introduction to percentages, simple profit & loss calculations. [1, 8, 9]  
+
+Algebra & Geometry • Introduction to Algebra: Variable concepts, constants, forming algebraic expressions, solving basic linear equations. 
+• Basic Geometrical Ideas: Points, lines, line segments, rays, intersecting and parallel lines, open/closed curves. 
+• Understanding Shapes: Polygons, triangles (by sides and angles), quadrilaterals, 3D shapes (prisms, pyramids, cones). 
+• Symmetry & Practical Geometry: Line of symmetry, rotational symmetry reflection, constructions using a ruler and compass (perpendicular bisectors, angles). [1, 8, 9, 10]  
+
+Mensuration & Data Handling • Perimeter and Area: Formulas for squares, rectangles, and regular polygons; complex composite figures. 
+• Data Handling: Data collection and organization, pictographs, bar graphs, interpreting complex data maps. [1, 9, 10]  
+
+2. Science Olympiad (e.g., NSO, NSTSE) 
+Science is split into three foundational branches, focusing on conceptual clarity and real-world application. [11, 12]  
+Physics • Motion & Measurement: Types of motion (rectilinear, circular, periodic), history of transport, units of measurement, standard unit conversions. 
+• Light, Shadows, & Reflections: Luminous vs. non-luminous objects, transparent/translucent/opaque media, pinhole camera mechanics, characteristics of reflections. 
+• Electricity & Circuits: Electric cell components, open vs. closed circuits, switches, conductors, and insulators. 
+• Fun with Magnets: Magnetic materials, poles of a magnet, magnetic compass tracking, demagnetization. [2, 13]  
+
+Chemistry • Sorting & Separation of Materials: Hardness, solubility, luster, transparency, methods of separation (winnowing, sedimentation, decantation, filtration, evaporation). 
+• Changes Around Us: Reversible and irreversible changes, physical vs. chemical transformations, expansion and contraction. 
+• Natural Resources (Water & Air): The water cycle, composition of air, importance of oxygen, air pollution, conservation. [2, 11, 13]  
+
+Biology • Food and Its Components: Sources of food, nutrients (carbohydrates, fats, proteins, vitamins, minerals), balanced diet, deficiency diseases. 
+• Fibre to Fabric: Natural vs. synthetic fibers, plant fibers (cotton, jute), processing steps (ginning, spinning, weaving, knitting). 
+• Living World & Diversity: Characteristics of living organisms, plant anatomy (roots, stem, leaves, flowers), animal body movements (joints, skeleton, gait of animals). 
+• Habitats & Adaptations: Terrestrial, aquatic, and aerial environments; plant and animal survival mechanisms in extreme climates. [11, 13]  
+
+3. Logical Reasoning & Critical Thinking 
+This section appears in almost all Tier-1 Olympiads to test mental aptitude and problem-solving velocity. [3, 7]  
+Verbal Reasoning • Series Completion: Number and alpha-numeric patterns. 
+• Coding-Decoding: Letter shifting, substitution codes, number coding. 
+• Blood Relations & Ranking: Decoding family trees, positional rankings in a row. 
+• Direction Sense: Compass orientation and distance mapping. 
+• Analogy & Classification: Finding logical links, identifying the "Odd One Out". [5, 14]  
+
+Non-Verbal Reasoning • Visual Logic: Figure matrix completion, identifying embedded figures, grouping identical figures. 
+• Spatial Operations: Paper folding, paper cutting, cube and dice rotations. 
+• Mirror & Water Images: Lateral inversion and vertical flipping. [5, 14]  
+
+4. English Olympiad (e.g., IEO, UIEO) 
+The English framework emphasizes deep situational comprehension and advanced grammar nuance. 
+
+• Word & Structure Knowledge: Nouns, pronouns, verbs, adverbs, adjectives, articles, prepositions, conjunctions, tenses, active/passive voice, direct/indirect narration, collocations, phrasal verbs, idioms, synonyms, and antonyms. 
+• Reading Comprehension: Extracting information from text layouts like brochures, itineraries, news stories, formal/informal letters, and timetables. 
+• Spoken & Written Expression: Situational communication skills (e.g., matching responses to appropriate requests, refusals, apologies, and agreements). [4, 15]  
+
+
+
+The standard Grade 4 Olympiad syllabus
+
+1. Mathematics Olympiad (e.g., IMO, NSTSE)
+
+	• 5-digit numbers and larger digits (reading and writing) 
+	• Place value and face value 
+	• Expanded form and standard form 
+	• Comparing and ordering numbers (ascending/descending) 
+	• Roman numerals 
+	• Factors and multiples (prime, composite, LCM, HCF) [1, 3, 5, 6, 7, 8]  
+
+• Computation Operations 
+
+	• Advanced addition and subtraction 
+	• Multiplication and division of large numbers 
+	• Word problems based on arithmetic operations 
+	• Order of operations (BODMAS rules) [1, 2, 3, 5, 6, 7, 9]  
+
+• Fractions and Decimals 
+
+	• Types of fractions (proper, improper, mixed, equivalent) 
+	• Addition and subtraction of like fractions 
+	• Basic introduction to decimals and their visual representations [6]  
+
+• Geometry and Shapes 
+
+	• Types of lines, line segments, rays, and open/closed curves 
+	• Properties of 2D shapes (square, rectangle, triangle, circle) 
+	• Identification of 3D solids (cube, cuboid, sphere, cylinder, cone) 
+	• Perimeter of various shapes 
+	• Symmetry and line of symmetry [1, 3, 5, 7, 10]  
+
+• Measurement and Conversions 
+
+	• Measuring length, weight, and capacity/volume 
+	• Unit conversion (e.g., meters to kilometers, grams to kilograms) [1, 3, 7, 11]  
+
+• Time, Money, and Calendar 
+
+	• Reading clocks, converting time (hours, minutes, seconds), and elapsed time 
+	• Days, dates, weeks, and leap years 
+	• Monetary operations, calculating totals, making change, and simple bills [1, 5]  
+
+• Data Handling 
+
+	• Interpreting pictographs 
+	• Reading and creating bar graphs 
+	• Tally marks and data interpretation charts [1, 3, 7, 12]  
+
+3. Logical Reasoning & Critical Thinking 
+This section assesses structural organization, analytical capacities, and a flexible intellect. 
+
+• Verbal Reasoning 
+
+	• Alphabet Test: Arranging letters, decoding words, finding words within words. 
+	• Coding-Decoding: Substituting numbers or codes for words. 
+	• Ranking Test: Finding a position from left/right or top/bottom. 
+	• Direction Sense Test: Navigating north, south, east, and west paths. 
+	• Analogy and Classification: Grouping items or identifying matching pairs based on relationships. 
+	• Blood Relations: Deciphering family structures and relationships. [1, 5]  
+
+• Non-Verbal Reasoning 
+
+	• Patterns: Identifying shape sequences, figure completions, and series continuation. 
+	• Mirror and Water Images: Visualizing inverted configurations. 
+	• Embedded Figures: Finding a smaller shape hidden inside a complex illustration. 
+	• Geometrical Solids: Counting the number of faces, edges, or hidden blocks. 
+	• Possible Combinations: Finding permutation arrangements of basic colors, numbers, or objects. [1, 5]  
+
+3. Everyday Mathematics 
+This section does not introduce unique topics, but re-contextualizes the core subjective syllabus into practical settings. 
+
+• Real-Life Problem Solving: Applying arithmetic directly to shopping, sharing meals, banking, or travel. 
+• Multi-Step Calculations: Combining multi-operation parameters within singular scenarios. [2, 9]  
+
+4. English Olympiad (e.g., IEO, UIEO)
+1. Grammar and Mechanics 
+
+• Nouns: Proper, common, collective, material, abstract, countable, and uncountable. 
+• Pronouns: Personal, possessive, demonstrative, and reflexive. 
+• Verbs: Action verbs, helping verbs (is, am, are, was, were), and basic modal verbs (can, may, should). 
+• Tenses: Present, past, and future (simple and continuous forms). 
+• Adjectives: Qualitative, quantitative, demonstrative, possessive, and degrees of comparison. 
+• Adverbs: Adverbs of manner, place, time, and frequency. 
+• Articles: Definite (the) and indefinite (a, an) articles. 
+• Prepositions: Direction, position, time, and place. 
+• Conjunctions: Coordinating conjunctions (and, but, or, so, because). 
+• Punctuation: Capital letters, full stops, commas, question marks, and apostrophes for possession/contraction. 
+• Sentences: Subject and predicate identification, jumbled words, types of sentences (declarative, interrogative, exclamatory, imperative). 
+
+2. Vocabulary Enhancement 
+
+• Synonyms & Antonyms: Identifying words with similar or opposite meanings. 
+• Homophones & Homographs: Words that sound the same or are spelled the same but have different meanings. 
+• Collocations: Common word pairings (e.g., "make a mistake," "take a break"). 
+• Idioms & Proverbs: Age-appropriate expressions and their figurative meanings. 
+• One-Word Substitutions: Replacing a phrase with a single word (e.g., "a person who designs buildings" = architect). 
+• Spellings: Identifying correctly and incorrectly spelled words. 
+• Anagrams & Word Ladders: Word puzzles and letter rearrangements. 
+
+3. Reading Comprehension 
+
+• Fact Extraction: Locating direct information from short stories or essays. 
+• Inference: Understanding underlying meanings or character emotions not stated directly. 
+• Context Clues: Guessing the meaning of unfamiliar words using surrounding text. 
+• Sequencing: Arranging events from a passage in chronological order. 
+• Poetry: Comprehending short, age-appropriate poems and rhyme schemes. 
+
+4. Spoken and Written Expression 
+
+• Conversational English: Choosing appropriate responses for specific situations (e.g., making requests, apologizing, greeting someone). 
+• Functional Language: Language used in invitations, formal notices, telephone calls, or buying items. 
+
+The Grade 4 Science Olympiad syllabus (based on major frameworks like the  SOF National Science Olympiad) is broken down into Logical Reasoning, Core Science, and Higher-Order Thinking sections. [1]  
+Section 1: Logical Reasoning 
+
+• Patterns and Series: Number and letter patterns, geometric figure sequences. 
+• Alphabet and Coding: Alphabet test, coding-decoding words and numbers. 
+• Spatial and Visual Reasoning: Mirror images, embedded figures, geometrical shapes and solids. 
+• Ranking and Direction: Ranking test, direction sense test. 
+• Time and Calendar: Clock, calendar, days and dates. 
+• Grouping and Logic: Analogy and classification, possible combinations. 
+
+
+
+5 Science Olympiad 
+
+• Plants 
+
+	• Parts of a plant (roots, stem, leaves, flowers) and their functions. 
+	• Plant survival and adaptation in different habitats (terrestrial, aquatic). 
+	• Uses of plants and fibers (cotton, jute, linen). [2]  
+
+• Animals 
+
+	• Classification of animals (herbivores, carnivores, omnivores). 
+	• Animal habits, body coverings, and adaptations. 
+	• The world of birds (beaks, claws, nests, flight). 
+
+• Food and Digestion 
+
+	• Components of food (nutrients like carbohydrates, proteins, fats, vitamins, minerals). 
+	• Balanced diet and deficiency diseases. 
+	• The human digestive system and the process of digestion. 
+
+• Human Needs and Body 
+
+	• Human body systems (basic overview of organ systems). 
+	• Clothes we wear and seasonal clothing choices. 
+	• Health, safety, and hygiene rules. 
+
+• Matter and Materials 
+
+	• States of matter (solid, liquid, gas) and their properties. 
+	• Materials, solubility, and basic solutions. [3]  
+
+• Force, Work, and Energy 
+
+	• Push and pull as forces. 
+	• Friction as a force and its effects. 
+	• Forms of energy (light and shadow formation). 
+	• Simple machines. [3]  
+
+• Our Environment 
+
+	• Living and non-living things relationship. 
+	• Air, atmosphere, and weather. 
+	• Natural resources and pollution prevention. [3, 4]  
+
+• Earth and Universe 
+
+	• Movement of the Earth (rotation and revolution) and its effects. 
+	• Earth and its neighbors (the solar system, moon phases). [3, 5]  
+
+
+
