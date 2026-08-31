@@ -15,5 +15,9 @@ compatibility_flags = ["nodejs_compat"]
 # Update this if the frontend Worker's real URL ends up different, then `wrangler deploy` again.
 FRONTEND_ORIGIN = "https://nalnaal.com,https://www.nalnaal.com"
 
+[[routes]]
+pattern = "api.nalnaal.com"
+custom_domain = true
+
 [observability]
 enabled = true
