@@ -13,7 +13,7 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 # The deployed frontend's origin — CORS only allows requests from here.
 # Update this if the frontend Worker's real URL ends up different, then `wrangler deploy` again.
-FRONTEND_ORIGIN = "https://olympiad-trail.sunbalac.workers.dev"
+FRONTEND_ORIGIN = "https://nalnaal.com"
 
 [observability]
 enabled = true
