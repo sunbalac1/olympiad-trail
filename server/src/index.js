@@ -10,10 +10,11 @@ import { adminRoutes } from "./routes/admin.js";
 const app = new Hono();
 
 // FRONTEND_ORIGIN is set as a Worker var (see wrangler.toml / .dev.vars) —
-// e.g. https://olympiad-trail.pages.dev. `credentials: true` is required
-// since auth relies on an httpOnly session cookie, not a bearer token.
+// a comma-separated list, since the site is reachable at more than one
+// origin (bare domain + www). `credentials: true` is required since auth
+// relies on an httpOnly session cookie, not a bearer token.
 app.use("*", (c, next) => cors({
-  origin: c.env.FRONTEND_ORIGIN,
+  origin: c.env.FRONTEND_ORIGIN.split(",").map((o) => o.trim()),
   credentials: true,
 })(c, next));
 
