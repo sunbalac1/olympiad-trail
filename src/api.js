@@ -57,4 +57,5 @@ export const api = {
   adminDeleteQuestion: (id) => request(`/admin/questions/${id}`, { method: "DELETE" }),
   adminListFlags: () => request("/admin/flags"),
   adminResolveFlag: (id) => request(`/admin/flags/${id}/resolve`, { method: "POST" }),
+  adminAnalytics: () => request("/admin/analytics"),
 };

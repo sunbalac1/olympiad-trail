@@ -339,6 +339,8 @@ export default function App() {
   const [adminQuestions, setAdminQuestions] = useState([]);
   const [adminFlags, setAdminFlags] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);
+  const [adminAnalytics, setAdminAnalytics] = useState({ totalAttempts: 0, totalStudents: 0, topics: [] });
+  const [adminAnalyticsLoading, setAdminAnalyticsLoading] = useState(false);
 
   // on load, check for an existing session before deciding whether to show the auth screen
   useEffect(() => {
@@ -355,9 +357,9 @@ export default function App() {
     })();
   }, []);
 
-  // safety net: never render the admin screen for a non-admin session
+  // safety net: never render an admin screen for a non-admin session
   useEffect(() => {
-    if (screen === "admin" && !account?.isAdmin) setScreen("profiles");
+    if ((screen === "admin" || screen === "admin-analytics") && !account?.isAdmin) setScreen("profiles");
   }, [screen, account]);
 
   // load the full question bank + open flags whenever the admin screen is opened
@@ -365,6 +367,14 @@ export default function App() {
     if (screen !== "admin" || !account?.isAdmin) return;
     setAdminLoading(true);
     Promise.all([refreshAdminQuestions(), refreshAdminFlags()]).finally(() => setAdminLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, account?.isAdmin]);
+
+  // load cross-student topic analytics whenever that screen is opened
+  useEffect(() => {
+    if (screen !== "admin-analytics" || !account?.isAdmin) return;
+    setAdminAnalyticsLoading(true);
+    refreshAdminAnalytics().finally(() => setAdminAnalyticsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, account?.isAdmin]);
 
@@ -397,6 +407,10 @@ export default function App() {
 
   async function refreshAdminFlags() {
     setAdminFlags(await api.adminListFlags());
+  }
+
+  async function refreshAdminAnalytics() {
+    setAdminAnalytics(await api.adminAnalytics());
   }
 
   const currentProfile = students.find((p) => p.id === currentStudentId) || null;
@@ -698,7 +712,15 @@ export default function App() {
           csvImport={csvImport} setCsvImport={setCsvImport}
           flags={adminFlags}
           onResolveFlag={async (id) => { await api.adminResolveFlag(id); await refreshAdminFlags(); }}
+          onViewAnalytics={() => setScreen("admin-analytics")}
           onBack={() => setScreen("profiles")}
+        />
+      )}
+
+      {screen === "admin-analytics" && account.isAdmin && (
+        <AdminAnalyticsScreen
+          data={adminAnalytics} loading={adminAnalyticsLoading}
+          onBack={() => setScreen("admin")}
         />
       )}
 
@@ -1357,6 +1379,103 @@ function AnalyticsScreen({ attempts, allQuestions, onBack }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Admin: cross-student analytics                                     */
+/* ------------------------------------------------------------------ */
+
+function AdminAnalyticsScreen({ data, loading, onBack }) {
+  const [gradeFilter, setGradeFilter] = useState("all");
+
+  const topics = useMemo(() => {
+    return gradeFilter === "all" ? data.topics : data.topics.filter((t) => String(t.grade) === gradeFilter);
+  }, [data.topics, gradeFilter]);
+
+  const bySubject = useMemo(() => {
+    const grouped = {};
+    topics.forEach((t) => { (grouped[t.subject] ||= []).push(t); });
+    Object.values(grouped).forEach((list) => list.sort((a, b) => a.pct - b.pct));
+    return grouped;
+  }, [topics]);
+
+  // strongest/weakest standouts, ignoring topics with too little data for a confident read
+  const confident = topics.filter((t) => t.tier !== "learning");
+  const weakest = confident.length ? [...confident].sort((a, b) => a.pct - b.pct)[0] : null;
+  const strongest = confident.length ? [...confident].sort((a, b) => b.pct - a.pct)[0] : null;
+
+  return (
+    <div className="screen fade-in">
+      <button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Back</button>
+      <h1 className="page-title"><BarChart3 size={22} style={{ verticalAlign: "-4px", marginRight: 6 }} />Student analytics</h1>
+      <p className="page-sub">
+        Topic-by-topic strengths across every family's practice rounds — {data.totalAttempts} attempt{data.totalAttempts === 1 ? "" : "s"} from {data.totalStudents} student{data.totalStudents === 1 ? "" : "s"} so far.
+      </p>
+      {loading && <p className="hint-text">Loading analytics…</p>}
+
+      <div className="chip-row" style={{ marginBottom: 20 }}>
+        <select className="filter-select" value={gradeFilter} onChange={(e) => setGradeFilter(e.target.value)}>
+          <option value="all">All grades</option>
+          {GRADES.map((g) => <option key={g} value={g}>Grade {g}</option>)}
+        </select>
+      </div>
+
+      {topics.length === 0 ? (
+        <div className="empty-box">No completed practice rounds yet{gradeFilter !== "all" ? ` for Grade ${gradeFilter}` : ""}.</div>
+      ) : (
+        <>
+          {(strongest || weakest) && (
+            <div className="analytics-summary-row">
+              {strongest && (
+                <div className="summary-card summary-strong">
+                  <div className="summary-label">💪 Strongest topic</div>
+                  <div className="summary-topic">{topicLabel(strongest.subject, strongest.topic)}</div>
+                  <div className="summary-meta">Grade {strongest.grade} · {SUBJECTS[strongest.subject].label} · {strongest.pct}% correct</div>
+                </div>
+              )}
+              {weakest && (
+                <div className="summary-card summary-weak">
+                  <div className="summary-label">⚠️ Needs the most work</div>
+                  <div className="summary-topic">{topicLabel(weakest.subject, weakest.topic)}</div>
+                  <div className="summary-meta">Grade {weakest.grade} · {SUBJECTS[weakest.subject].label} · {weakest.pct}% correct</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {Object.entries(SUBJECTS).map(([key, s]) => {
+            const list = bySubject[key];
+            if (!list || list.length === 0) return null;
+            return (
+              <div key={key} className="topic-subject-block">
+                <h2 className="section-title subject-topic-title" style={{ "--accent": s.color }}>
+                  <s.icon size={17} /> {s.label}
+                </h2>
+                <div className="topic-list">
+                  {list.map((t) => {
+                    const meta = TIER_META[t.tier];
+                    return (
+                      <div key={`${t.grade}:${t.topic}`} className="topic-row">
+                        <div className="topic-row-top">
+                          <span className="topic-name">{gradeFilter === "all" ? `Gr ${t.grade} · ` : ""}{topicLabel(t.subject, t.topic)}</span>
+                          <span className={`topic-tier-tag ${meta.className}`}>{meta.label}</span>
+                        </div>
+                        <div className="topic-bar"><div className={`topic-bar-fill ${meta.className}`} style={{ width: `${t.pct}%` }} /></div>
+                        <div className="topic-row-bottom">
+                          {t.correct}/{t.total} correct across all students
+                          {t.total < 3 ? " · more attempts needed for a confident read" : ""}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  All questions (admin) — full table with grade / subject / topic filters */
 /* ------------------------------------------------------------------ */
 
@@ -1444,7 +1563,7 @@ function AllQuestionsTable({ allQuestions, onDelete }) {
 
 function ManageScreen({ allQuestions, loading, newQ, setNewQ, onAdd, onDeleteQuestion,
   onCSVUpload, onDownloadTemplate, csvImport, setCsvImport,
-  flags, onResolveFlag, onBack }) {
+  flags, onResolveFlag, onViewAnalytics, onBack }) {
 
   const fileRef = useRef(null);
 
@@ -1461,8 +1580,15 @@ function ManageScreen({ allQuestions, loading, newQ, setNewQ, onAdd, onDeleteQue
   return (
     <div className="screen screen-wide fade-in">
       <button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Back</button>
-      <h1 className="page-title"><Shield size={22} style={{ verticalAlign: "-4px", marginRight: 6 }} />Admin · Question bank</h1>
-      <p className="page-sub">Manage questions, review flags, and add or bulk-upload new ones.</p>
+      <div className="row-between">
+        <div>
+          <h1 className="page-title"><Shield size={22} style={{ verticalAlign: "-4px", marginRight: 6 }} />Admin · Question bank</h1>
+          <p className="page-sub">Manage questions, review flags, and add or bulk-upload new ones.</p>
+        </div>
+        <button className="admin-entry" onClick={onViewAnalytics}>
+          <BarChart3 size={13} /> Student analytics
+        </button>
+      </div>
       {loading && <p className="hint-text">Loading question bank…</p>}
 
       {/* grade × subject matrix */}
@@ -1835,6 +1961,14 @@ function GlobalStyle() {
       .pattern-card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; margin-bottom:26px; }
       .pattern-card-title { display:flex; align-items:center; gap:7px; font-weight:700; font-size:14px; color:var(--ink); margin-bottom:10px; }
       .pattern-list { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:6px; font-size:13.5px; color:var(--ink-soft); line-height:1.4; }
+      .analytics-summary-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:28px; }
+      .summary-card { border-radius:16px; padding:18px 20px; border:1px solid var(--line); }
+      .summary-strong { background:#D3F3EE; border-color:#9FDDCF; }
+      .summary-weak { background:#FBDEE3; border-color:#F0AABB; }
+      .summary-label { font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:6px; }
+      .summary-topic { font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--ink); margin-bottom:4px; }
+      .summary-meta { font-size:12.5px; color:var(--ink-soft); }
+      @media(max-width:560px){ .analytics-summary-row{ grid-template-columns:1fr; } }
       .topic-subject-block { margin-bottom:26px; }
       .subject-topic-title { display:flex; align-items:center; gap:8px; color:var(--accent); }
       .topic-list { display:flex; flex-direction:column; gap:14px; }

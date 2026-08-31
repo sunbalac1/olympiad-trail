@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, eq, ilike, isNull } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { questions, flags } from "../db/schema.js";
+import { questions, flags, attempts } from "../db/schema.js";
 import { requireAuth, requireAdmin } from "../lib/auth.js";
 
 export const adminRoutes = new Hono();
@@ -103,4 +103,40 @@ adminRoutes.post("/flags/:id/resolve", async (c) => {
   const [updated] = await db.update(flags).set({ resolvedAt: new Date() }).where(eq(flags.id, flagId)).returning();
   if (!updated) return c.json({ error: "Flag not found." }, 404);
   return c.json(updated);
+});
+
+// Cross-student insight: which topics does everyone tend to get right vs
+// wrong, broken down by grade and subject. `answers` doesn't store a topic
+// (it's a point-in-time snapshot of the question), so we join against the
+// current `questions.topic` here — same pattern the per-student analytics
+// screen already uses client-side, just aggregated across every account.
+adminRoutes.get("/analytics", async (c) => {
+  const db = getDb(c.env.DATABASE_URL);
+  const [allAttempts, allQuestions] = await Promise.all([
+    db.select({ grade: attempts.grade, subject: attempts.subject, studentId: attempts.studentId, answers: attempts.answers }).from(attempts),
+    db.select({ id: questions.id, topic: questions.topic }).from(questions),
+  ]);
+  const topicById = new Map(allQuestions.map((q) => [q.id, q.topic]));
+
+  const buckets = {};
+  const studentIds = new Set();
+  allAttempts.forEach((a) => {
+    studentIds.add(a.studentId);
+    a.answers.forEach((ans) => {
+      const topic = topicById.get(ans.id) || "uncategorized";
+      const key = `${a.grade}:${a.subject}:${topic}`;
+      if (!buckets[key]) buckets[key] = { grade: a.grade, subject: a.subject, topic, correct: 0, total: 0 };
+      const b = buckets[key];
+      b.total += 1;
+      if (ans.selected !== null && ans.selected === ans.correctIndex) b.correct += 1;
+    });
+  });
+
+  const topicStats = Object.values(buckets).map((b) => {
+    const pct = Math.round((b.correct / b.total) * 100);
+    const tier = b.total < 3 ? "learning" : pct >= 75 ? "strong" : pct >= 50 ? "average" : "needs-improvement";
+    return { ...b, pct, tier };
+  });
+
+  return c.json({ totalAttempts: allAttempts.length, totalStudents: studentIds.size, topics: topicStats });
 });
