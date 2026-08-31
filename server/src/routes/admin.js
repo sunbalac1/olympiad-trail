@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { and, eq, ilike } from "drizzle-orm";
+import { and, eq, ilike, isNull } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { questions } from "../db/schema.js";
+import { questions, flags } from "../db/schema.js";
 import { requireAuth, requireAdmin } from "../lib/auth.js";
 
 export const adminRoutes = new Hono();
@@ -81,4 +81,26 @@ adminRoutes.delete("/questions/:id", async (c) => {
   const deleted = await db.delete(questions).where(eq(questions.id, id)).returning();
   if (deleted.length === 0) return c.json({ error: "Question not found." }, 404);
   return c.json({ ok: true });
+});
+
+// Reviewing/resolving flags raised by any account — see routes/flags.js for
+// where a flag actually gets created (any signed-in account, for their own student).
+adminRoutes.get("/flags", async (c) => {
+  const db = getDb(c.env.DATABASE_URL);
+  const rows = await db.select({
+    id: flags.id, reason: flags.reason, createdAt: flags.createdAt, resolvedAt: flags.resolvedAt,
+    questionId: flags.questionId, questionText: questions.questionText,
+    subject: questions.subject, grade: questions.grade,
+  }).from(flags)
+    .innerJoin(questions, eq(flags.questionId, questions.id))
+    .where(isNull(flags.resolvedAt));
+  return c.json(rows);
+});
+
+adminRoutes.post("/flags/:id/resolve", async (c) => {
+  const flagId = Number(c.req.param("id"));
+  const db = getDb(c.env.DATABASE_URL);
+  const [updated] = await db.update(flags).set({ resolvedAt: new Date() }).where(eq(flags.id, flagId)).returning();
+  if (!updated) return c.json({ error: "Flag not found." }, 404);
+  return c.json(updated);
 });

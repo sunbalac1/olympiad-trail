@@ -32,7 +32,7 @@ export async function requireAuth(c, next) {
   const token = getCookie(c, COOKIE_NAME);
   if (!token) return c.json({ error: "Not signed in." }, 401);
   try {
-    const payload = await verify(token, c.env.JWT_SECRET);
+    const payload = await verify(token, c.env.JWT_SECRET, "HS256");
     c.set("account", { id: payload.accountId, isAdmin: !!payload.isAdmin });
     await next();
   } catch {
