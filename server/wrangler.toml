@@ -2,6 +2,7 @@ name = "olympiad-trail-api"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = false
 
 # Secrets (DATABASE_URL, JWT_SECRET) are NOT set here.
 # For local dev: create server/.dev.vars (gitignored) with:
@@ -11,8 +12,10 @@ compatibility_flags = ["nodejs_compat"]
 #   `wrangler secret put JWT_SECRET` (see server/README.md).
 
 [vars]
-# The deployed frontend's origin — CORS only allows requests from here.
-# Update this if the frontend Worker's real URL ends up different, then `wrangler deploy` again.
+# Comma-separated list of allowed frontend origins for CORS. Must be
+# first-party (same registrable domain as the API) for the session
+# cookie to survive browser cross-site cookie blocking — see git log
+# for the api.nalnaal.com migration if this needs to change again.
 FRONTEND_ORIGIN = "https://nalnaal.com,https://www.nalnaal.com"
 
 [[routes]]
