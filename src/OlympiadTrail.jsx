@@ -4,11 +4,10 @@ import {
   Check, X, Plus, Trash2, ArrowLeft, Play, Sparkles, Users, Minus,
   Upload, Download, AlertCircle, GraduationCap,
   Compass, Zap, Star, Trophy, Flame, Lock, Flag, BarChart3, TrendingUp, TrendingDown, Lightbulb,
-  Link as LinkIcon, Shield, LogOut,
+  Shield, LogOut,
 } from "lucide-react";
-import { STARTER_QUESTIONS } from "./questions";
 import { topicsForSubject, topicLabel } from "./topics";
-import { fileSyncSupported, loadSavedFileHandle, hasReadWritePermission, requestReadWritePermission, pickQuestionsFile, appendQuestionsToFile } from "./fileSync";
+import { api, mapQuestion, mapAttempt } from "./api";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                           */
@@ -202,69 +201,6 @@ function detectPatterns(attempts, allQuestions) {
   return patterns.slice(0, 6);
 }
 
-/* ---- localStorage persistence ---- */
-
-async function loadAppData() {
-  try {
-    const raw = localStorage.getItem("olympiad-trail:app-data");
-    if (raw) return JSON.parse(raw);
-  } catch (e) { console.error(e); }
-  return { profiles: [], customQuestions: [], flags: {} };
-}
-
-async function saveAppData(data) {
-  try { localStorage.setItem("olympiad-trail:app-data", JSON.stringify(data)); }
-  catch (e) { console.error(e); }
-}
-
-async function loadAttempts(profileId) {
-  try {
-    const raw = localStorage.getItem(`olympiad-trail:attempts:${profileId}`);
-    if (raw) return JSON.parse(raw);
-  } catch (e) { console.error(e); }
-  return [];
-}
-
-async function saveAttempts(profileId, attempts) {
-  try { localStorage.setItem(`olympiad-trail:attempts:${profileId}`, JSON.stringify(attempts)); }
-  catch (e) { console.error(e); }
-}
-
-// tracks which custom-question ids have already been written into questions.js,
-// so re-syncing (e.g. via the "Sync now" button) never inserts duplicates
-function loadSyncedIds() {
-  try {
-    const raw = localStorage.getItem("olympiad-trail:synced-question-ids");
-    if (raw) return new Set(JSON.parse(raw));
-  } catch (e) { console.error(e); }
-  return new Set();
-}
-
-function saveSyncedIds(idSet) {
-  try { localStorage.setItem("olympiad-trail:synced-question-ids", JSON.stringify([...idSet])); }
-  catch (e) { console.error(e); }
-}
-
-/* ---- admin password (a light parental gate, not real security — this is a
-   local single-device app with no server, so it only has to stop a curious
-   kid, not a determined adult) ---- */
-
-async function hashPassword(password) {
-  const bytes = new TextEncoder().encode(password);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function loadAdminPasswordHash() {
-  try { return localStorage.getItem("olympiad-trail:admin-hash") || null; }
-  catch (e) { console.error(e); return null; }
-}
-
-function saveAdminPasswordHash(hash) {
-  try { localStorage.setItem("olympiad-trail:admin-hash", hash); }
-  catch (e) { console.error(e); }
-}
-
 /* ---- CSV parser ---- */
 
 // accepts either a topic id ("number-system") or its display label
@@ -368,15 +304,19 @@ function GradeChips({ selected, onChange, style = {} }) {
 /* ------------------------------------------------------------------ */
 
 export default function App() {
-  const [loading, setLoading] = useState(true);
-  const [profiles, setProfiles] = useState([]);
-  const [customQuestions, setCustomQuestions] = useState([]);
-  const [flags, setFlags] = useState({});
-  const [currentProfileId, setCurrentProfileId] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [account, setAccount] = useState(null); // { id, email, isAdmin }
+  const [authMode, setAuthMode] = useState("login"); // login | signup
+  const [authError, setAuthError] = useState("");
+
+  const [students, setStudents] = useState([]);
+  const [currentStudentId, setCurrentStudentId] = useState(null);
   const [screen, setScreen] = useState("profiles");
+  const [gradeQuestions, setGradeQuestions] = useState([]); // questions for the current student's grade
   const [attempts, setAttempts] = useState([]);
   const [lastAttempt, setLastAttempt] = useState(null);
   const [reviewFilter, setReviewFilter] = useState("all");
+  const [flaggedByQuestion, setFlaggedByQuestion] = useState({}); // { [questionId]: reason } — this session only
   const [newProfileName, setNewProfileName] = useState("");
   const [newProfileAvatar, setNewProfileAvatar] = useState(AVATARS[0]);
   const [newProfileGrade, setNewProfileGrade] = useState(5);
@@ -396,140 +336,81 @@ export default function App() {
 
   const [newQ, setNewQ] = useState({ subject: "math", grade: 5, topic: topicsForSubject("math")[0].id, q: "", options: ["","","",""], correct: 0, solution: "" });
   const [csvImport, setCsvImport] = useState({ status: "idle", errors: [], count: 0 }); // idle | success | error
-  const [fileSyncHandle, setFileSyncHandle] = useState(null);
-  const [fileSyncStatus, setFileSyncStatus] = useState("unavailable"); // unavailable | disconnected | connected | error
-  const [fileSyncMessage, setFileSyncMessage] = useState("");
-  const syncedIdsRef = useRef(loadSyncedIds());
+  const [adminQuestions, setAdminQuestions] = useState([]);
+  const [adminFlags, setAdminFlags] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
 
-  const [adminPasswordHash, setAdminPasswordHash] = useState(null);
-  const [isAdminAuthed, setIsAdminAuthed] = useState(false);
-  const [adminAuthError, setAdminAuthError] = useState("");
-
+  // on load, check for an existing session before deciding whether to show the auth screen
   useEffect(() => {
-    setAdminPasswordHash(loadAdminPasswordHash());
-  }, []);
-
-  // leaving the profile picker always requires re-entering the admin password,
-  // no matter how you got there (back link, logo, exiting admin, etc.)
-  useEffect(() => {
-    if (screen === "profiles") setIsAdminAuthed(false);
-  }, [screen]);
-
-  // safety net: never render the admin screen without a valid session
-  useEffect(() => {
-    if (screen === "admin" && !isAdminAuthed) setScreen("profiles");
-  }, [screen, isAdminAuthed]);
-
-  async function adminLogin(password) {
-    setAdminAuthError("");
-    if (!adminPasswordHash) {
-      if (password.length < 4) { setAdminAuthError("Use at least 4 characters."); return; }
-      const hash = await hashPassword(password);
-      saveAdminPasswordHash(hash);
-      setAdminPasswordHash(hash);
-      setIsAdminAuthed(true);
-      setScreen("admin");
-      return;
-    }
-    const hash = await hashPassword(password);
-    if (hash === adminPasswordHash) {
-      setIsAdminAuthed(true);
-      setScreen("admin");
-    } else {
-      setAdminAuthError("Incorrect password.");
-    }
-  }
-
-  useEffect(() => {
-    if (!fileSyncSupported()) return;
     (async () => {
-      const handle = await loadSavedFileHandle().catch(() => null);
-      if (handle && (await hasReadWritePermission(handle).catch(() => false))) {
-        setFileSyncHandle(handle);
-        setFileSyncStatus("connected");
-      } else {
-        setFileSyncStatus("disconnected");
+      try {
+        const acct = await api.me();
+        setAccount(acct);
+        setStudents(await api.listStudents());
+      } catch {
+        setAccount(null);
+      } finally {
+        setAuthLoading(false);
       }
     })();
   }, []);
 
-  // writes any not-yet-synced questions into questions.js; safe to call repeatedly —
-  // already-synced ids (tracked in syncedIdsRef) are always skipped, so re-running
-  // this (e.g. the "Sync now" button, or right after connecting) never duplicates.
-  async function syncQuestionsToFile(handle, questions) {
-    const unsynced = questions.filter((q) => !syncedIdsRef.current.has(q.id));
-    if (!handle || unsynced.length === 0) return 0;
-    try {
-      if (!(await hasReadWritePermission(handle)) && !(await requestReadWritePermission(handle))) {
-        setFileSyncStatus("disconnected");
-        return 0;
-      }
-      await appendQuestionsToFile(handle, unsynced);
-      unsynced.forEach((q) => syncedIdsRef.current.add(q.id));
-      saveSyncedIds(syncedIdsRef.current);
-      return unsynced.length;
-    } catch (e) {
-      console.error(e);
-      setFileSyncStatus("error");
-      return 0;
-    }
-  }
-
-  async function connectQuestionsFile() {
-    try {
-      const handle = await pickQuestionsFile();
-      setFileSyncHandle(handle);
-      setFileSyncStatus("connected");
-      // backfill: write everything already sitting in this browser's storage, not just future uploads
-      const count = await syncQuestionsToFile(handle, customQuestions);
-      setFileSyncMessage(count > 0 ? `Saved ${count} existing question${count === 1 ? "" : "s"} to questions.js.` : "Connected — new questions will be saved automatically.");
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  async function syncAllQuestionsNow() {
-    const count = await syncQuestionsToFile(fileSyncHandle, customQuestions);
-    setFileSyncMessage(count > 0 ? `Saved ${count} question${count === 1 ? "" : "s"} to questions.js.` : "Already up to date — nothing new to save.");
-  }
-
+  // safety net: never render the admin screen for a non-admin session
   useEffect(() => {
-    (async () => {
-      const data = await loadAppData();
-      const profiles = data.profiles || [];
-      const rawQuestions = data.customQuestions || [];
-      const cleanedQuestions = rawQuestions.map((q) => ({ ...q, q: stripQuestionPrefix(q.q) }));
-      // questions previously written into questions.js (via file sync) are now part of
-      // STARTER_QUESTIONS after a rebuild — drop the redundant localStorage copy so they
-      // don't show up twice.
-      const starterIds = new Set(STARTER_QUESTIONS.map((q) => q.id));
-      const dedupedQuestions = cleanedQuestions.filter((q) => !starterIds.has(q.id));
-      const loadedFlags = data.flags || {};
-      setProfiles(profiles);
-      setCustomQuestions(dedupedQuestions);
-      setFlags(loadedFlags);
-      setLoading(false);
-      const changed = rawQuestions.length !== dedupedQuestions.length || rawQuestions.some((q, i) => q.q !== cleanedQuestions[i]?.q);
-      if (changed) await saveAppData({ profiles, customQuestions: dedupedQuestions, flags: loadedFlags });
-    })();
-  }, []);
+    if (screen === "admin" && !account?.isAdmin) setScreen("profiles");
+  }, [screen, account]);
 
-  const allQuestions = useMemo(() => [...STARTER_QUESTIONS, ...customQuestions], [customQuestions]);
+  // load the full question bank + open flags whenever the admin screen is opened
+  useEffect(() => {
+    if (screen !== "admin" || !account?.isAdmin) return;
+    setAdminLoading(true);
+    Promise.all([refreshAdminQuestions(), refreshAdminFlags()]).finally(() => setAdminLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, account?.isAdmin]);
 
-  const currentProfile = profiles.find((p) => p.id === currentProfileId) || null;
+  async function handleAuthSubmit(email, password) {
+    setAuthError("");
+    try {
+      const acct = authMode === "signup" ? await api.signup(email, password) : await api.login(email, password);
+      setAccount(acct);
+      setStudents(await api.listStudents());
+      setScreen("profiles");
+    } catch (e) {
+      setAuthError(e.message);
+    }
+  }
 
-  // counts per subject+grade for the setup screen
-  const countsBySubjectGrade = useMemo(() => {
+  async function handleLogout() {
+    await api.logout().catch(() => {});
+    setAccount(null);
+    setStudents([]);
+    setCurrentStudentId(null);
+    setAttempts([]);
+    setGradeQuestions([]);
+    setScreen("profiles");
+  }
+
+  async function refreshAdminQuestions() {
+    const rows = await api.adminListQuestions();
+    setAdminQuestions(rows.map(mapQuestion));
+  }
+
+  async function refreshAdminFlags() {
+    setAdminFlags(await api.adminListFlags());
+  }
+
+  const currentProfile = students.find((p) => p.id === currentStudentId) || null;
+
+  // counts per subject for the setup screen — gradeQuestions is already scoped
+  // to the current student's grade, so no separate grade key is needed here.
+  const countsBySubject = useMemo(() => {
     const c = {};
-    allQuestions.forEach((q) => {
-      const key = `${q.subject}:${q.grade}`;
-      c[key] = (c[key] || 0) + 1;
-    });
+    gradeQuestions.forEach((q) => { c[q.subject] = (c[q.subject] || 0) + 1; });
     return c;
-  }, [allQuestions]);
+  }, [gradeQuestions]);
 
-  function availableFor(subject, grade) {
-    return countsBySubjectGrade[`${subject}:${grade}`] || 0;
+  function availableFor(subject) {
+    return countsBySubject[subject] || 0;
   }
 
   const bestScoreBySubject = useMemo(() => {
@@ -563,26 +444,28 @@ export default function App() {
   async function addProfile() {
     const name = newProfileName.trim();
     if (!name) return;
-    const p = { id: uid(), name, avatar: newProfileAvatar, grade: newProfileGrade };
-    const next = [...profiles, p];
-    setProfiles(next);
-    await saveAppData({ profiles: next, customQuestions, flags });
+    const student = await api.addStudent({ name, avatar: newProfileAvatar, grade: newProfileGrade });
+    setStudents((s) => [...s, student]);
     setNewProfileName("");
   }
 
   async function deleteProfile(id) {
-    const next = profiles.filter((p) => p.id !== id);
-    setProfiles(next);
-    await saveAppData({ profiles: next, customQuestions, flags });
+    await api.deleteStudent(id);
+    setStudents((s) => s.filter((p) => p.id !== id));
     setConfirmDelete(null);
-    if (currentProfileId === id) { setCurrentProfileId(null); setScreen("profiles"); }
+    if (currentStudentId === id) { setCurrentStudentId(null); setScreen("profiles"); }
   }
 
   async function selectProfile(p) {
-    setCurrentProfileId(p.id);
+    setCurrentStudentId(p.id);
     setSetupGrade(p.grade || 5);
-    const a = await loadAttempts(p.id);
-    setAttempts(a);
+    const [qRows, aRows] = await Promise.all([
+      api.listQuestions({ grade: p.grade }),
+      api.listAttempts(p.id),
+    ]);
+    setGradeQuestions(qRows.map(mapQuestion));
+    setAttempts(aRows.map(mapAttempt));
+    setFlaggedByQuestion({});
     setScreen("dashboard");
   }
 
@@ -594,7 +477,7 @@ export default function App() {
     const profileGrade = currentProfile?.grade || 5;
     setSetupSubject(subj);
     setSetupGrade(profileGrade);
-    const avail = availableFor(subj, profileGrade);
+    const avail = availableFor(subj);
     const safeCount = Math.min(setupCount, Math.max(avail, 1));
     setSetupCount(safeCount);
     setSetupMinutes(Math.max(5, Math.round(safeCount * 1.5)));
@@ -602,7 +485,7 @@ export default function App() {
   }
 
   function startExam() {
-    const pool = allQuestions.filter((q) => q.subject === setupSubject && q.grade === setupGrade);
+    const pool = gradeQuestions.filter((q) => q.subject === setupSubject && q.grade === setupGrade);
     const picked = shuffle(pool).slice(0, Math.min(setupCount, pool.length)).map(shuffleQuestion);
     setExamQuestions(picked);
     setExamIndex(0);
@@ -621,16 +504,13 @@ export default function App() {
         correctIndex: q.correct, solution: q.solution,
         selected: examAnswers[q.id] !== undefined ? examAnswers[q.id] : null,
       }));
-      const score = answersArr.filter((a) => a.selected === a.correctIndex).length;
-      const attempt = {
-        id: uid(), subject: setupSubject, grade: setupGrade,
-        date: new Date().toISOString(), score, total: qs.length,
-        timeTakenSec: examTotalSec - remaining, answers: answersArr,
-      };
       (async () => {
-        const nextAttempts = [attempt, ...attempts];
-        setAttempts(nextAttempts);
-        if (currentProfileId) await saveAttempts(currentProfileId, nextAttempts);
+        const submitted = await api.submitAttempt({
+          studentId: currentStudentId, subject: setupSubject, grade: setupGrade,
+          timeTakenSec: examTotalSec - remaining, answers: answersArr,
+        });
+        const attempt = mapAttempt(submitted);
+        setAttempts((prev) => [attempt, ...prev]);
         setLastAttempt(attempt);
         setReviewFilter("all");
         setScreen("results");
@@ -638,7 +518,7 @@ export default function App() {
       return qs;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examAnswers, setupSubject, setupGrade, examTotalSec, remaining, attempts, currentProfileId]);
+  }, [examAnswers, setupSubject, setupGrade, examTotalSec, remaining, currentStudentId]);
 
   useEffect(() => {
     if (screen !== "exam") return;
@@ -656,23 +536,23 @@ export default function App() {
     setExamAnswers((a) => ({ ...a, [qId]: idx }));
   }
 
-  /* ---- custom questions ---- */
+  /* ---- admin: question bank management ---- */
 
-  async function addCustomQuestion() {
+  async function addAdminQuestion() {
     const cleaned = newQ.options.map((o) => o.trim());
     if (!newQ.q.trim() || cleaned.some((o) => !o) || !newQ.solution.trim()) return;
-    const q = { id: uid(), subject: newQ.subject, grade: newQ.grade, topic: newQ.topic, q: stripQuestionPrefix(newQ.q.trim()), options: cleaned, correct: newQ.correct, solution: newQ.solution.trim() };
-    const next = [...customQuestions, q];
-    setCustomQuestions(next);
-    await saveAppData({ profiles, customQuestions: next, flags });
-    await syncQuestionsToFile(fileSyncHandle, [q]);
+    await api.adminAddQuestion({
+      subject: newQ.subject, grade: newQ.grade, topic: newQ.topic,
+      questionText: stripQuestionPrefix(newQ.q.trim()), options: cleaned,
+      correctIndex: newQ.correct, solution: newQ.solution.trim(),
+    });
+    await refreshAdminQuestions();
     setNewQ({ ...newQ, q: "", options: ["","","",""], correct: 0, solution: "" });
   }
 
-  async function deleteCustomQuestion(id) {
-    const next = customQuestions.filter((q) => q.id !== id);
-    setCustomQuestions(next);
-    await saveAppData({ profiles, customQuestions: next, flags });
+  async function deleteAdminQuestion(id) {
+    await api.adminDeleteQuestion(id);
+    await refreshAdminQuestions();
   }
 
   /* ---- CSV upload ---- */
@@ -687,26 +567,21 @@ export default function App() {
       setCsvImport({ status: "error", errors: errors.length ? errors : ["No valid rows found"], count: 0 });
       return;
     }
-    const next = [...customQuestions, ...questions];
-    setCustomQuestions(next);
-    await saveAppData({ profiles, customQuestions: next, flags });
-    await syncQuestionsToFile(fileSyncHandle, questions);
-    setCsvImport({ status: "success", errors, count: questions.length });
+    const payload = questions.map((q) => ({
+      subject: q.subject, grade: q.grade, topic: q.topic,
+      questionText: q.q, options: q.options, correctIndex: q.correct, solution: q.solution,
+    }));
+    const result = await api.adminBulkQuestions(payload);
+    await refreshAdminQuestions();
+    setCsvImport({ status: "success", errors: [...errors, ...result.errors], count: result.inserted });
   }
 
   /* ---- question flags (report a bad question for review) ---- */
 
   async function flagQuestion(q, reason) {
-    const next = { ...flags, [q.id]: { reason, subject: q.subject, grade: q.grade, question: q.q, date: new Date().toISOString() } };
-    setFlags(next);
-    await saveAppData({ profiles, customQuestions, flags: next });
-  }
-
-  async function unflagQuestion(questionId) {
-    const next = { ...flags };
-    delete next[questionId];
-    setFlags(next);
-    await saveAppData({ profiles, customQuestions, flags: next });
+    if (!currentStudentId) return;
+    await api.flagQuestion({ studentId: currentStudentId, questionId: q.id, reason });
+    setFlaggedByQuestion((prev) => ({ ...prev, [q.id]: reason }));
   }
 
   function downloadTemplate() {
@@ -719,39 +594,43 @@ export default function App() {
 
   /* ---- render ---- */
 
-  if (loading) return <Shell><div className="loading">Loading your practice trail…</div></Shell>;
+  if (authLoading) return <Shell><div className="loading">Loading your practice trail…</div></Shell>;
+
+  if (!account) {
+    return (
+      <Shell>
+        <AuthScreen mode={authMode} setMode={setAuthMode} error={authError} onSubmit={handleAuthSubmit} />
+        <GlobalStyle />
+      </Shell>
+    );
+  }
 
   return (
     <Shell>
-      <Header profile={currentProfile} level={currentProfile ? level.level : null} isAdmin={isAdminAuthed}
+      <Header profile={currentProfile} level={currentProfile ? level.level : null} isAdmin={screen === "admin"}
+        account={account}
         onHome={() => setScreen(currentProfile ? "dashboard" : "profiles")}
-        onSwitch={() => setScreen("profiles")} />
+        onSwitch={() => setScreen("profiles")}
+        onLogout={handleLogout} />
 
       {screen === "profiles" && (
         <ProfilesScreen
-          profiles={profiles}
+          profiles={students}
           newProfileName={newProfileName} setNewProfileName={setNewProfileName}
           newProfileAvatar={newProfileAvatar} setNewProfileAvatar={setNewProfileAvatar}
           newProfileGrade={newProfileGrade} setNewProfileGrade={setNewProfileGrade}
           addProfile={addProfile} selectProfile={selectProfile}
           confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete}
           deleteProfile={deleteProfile}
-          onAdminClick={() => setScreen("admin-login")}
-        />
-      )}
-
-      {screen === "admin-login" && (
-        <AdminLoginScreen
-          hasPassword={!!adminPasswordHash} error={adminAuthError}
-          onSubmit={adminLogin}
-          onBack={() => setScreen("profiles")}
+          showAdminEntry={!!account.isAdmin}
+          onAdminClick={() => setScreen("admin")}
         />
       )}
 
       {screen === "dashboard" && currentProfile && (
         <DashboardScreen
           profile={currentProfile}
-          allQuestions={allQuestions}
+          allQuestions={gradeQuestions}
           bestScoreBySubject={bestScoreBySubject}
           attempts={attempts}
           level={level}
@@ -764,7 +643,7 @@ export default function App() {
 
       {screen === "analytics" && currentProfile && (
         <AnalyticsScreen
-          attempts={attempts} allQuestions={allQuestions}
+          attempts={attempts} allQuestions={gradeQuestions}
           onBack={() => setScreen("dashboard")}
         />
       )}
@@ -772,11 +651,11 @@ export default function App() {
       {screen === "setup" && (
         <SetupScreen
           subject={setupSubject}
-          setSubject={(s) => { setSetupSubject(s); setSetupCount(Math.min(setupCount, Math.max(availableFor(s, setupGrade), 1))); }}
+          setSubject={(s) => { setSetupSubject(s); setSetupCount(Math.min(setupCount, Math.max(availableFor(s), 1))); }}
           grade={setupGrade}
           count={setupCount} setCount={setSetupCount}
           minutes={setupMinutes} setMinutes={setSetupMinutes}
-          available={availableFor(setupSubject, setupGrade)}
+          available={availableFor(setupSubject)}
           onBack={() => setScreen("dashboard")}
           onStart={startExam}
         />
@@ -791,7 +670,7 @@ export default function App() {
       )}
 
       {screen === "results" && lastAttempt && (
-        <ResultsScreen attempt={lastAttempt} meta={resultsMeta} allQuestions={allQuestions}
+        <ResultsScreen attempt={lastAttempt} meta={resultsMeta} allQuestions={gradeQuestions}
           onReview={() => { setReviewFilter("all"); setScreen("review"); }}
           onDone={() => setScreen("dashboard")} />
       )}
@@ -799,20 +678,19 @@ export default function App() {
       {screen === "review" && lastAttempt && (
         <ReviewScreen attempt={lastAttempt}
           filter={reviewFilter} setFilter={setReviewFilter}
-          flags={flags} onFlag={flagQuestion} onUnflag={unflagQuestion}
+          flags={flaggedByQuestion} onFlag={flagQuestion}
           onBack={() => setScreen("dashboard")} />
       )}
 
-      {screen === "admin" && isAdminAuthed && (
+      {screen === "admin" && account.isAdmin && (
         <ManageScreen
-          allQuestions={allQuestions} customQuestions={customQuestions}
+          allQuestions={adminQuestions} loading={adminLoading}
           newQ={newQ} setNewQ={setNewQ}
-          onAdd={addCustomQuestion} onDelete={deleteCustomQuestion}
+          onAdd={addAdminQuestion} onDeleteQuestion={deleteAdminQuestion}
           onCSVUpload={handleCSVUpload} onDownloadTemplate={downloadTemplate}
           csvImport={csvImport} setCsvImport={setCsvImport}
-          fileSyncStatus={fileSyncStatus} fileSyncMessage={fileSyncMessage}
-          onConnectFile={connectQuestionsFile} onSyncNow={syncAllQuestionsNow}
-          flags={flags} onUnflag={unflagQuestion}
+          flags={adminFlags}
+          onResolveFlag={async (id) => { await api.adminResolveFlag(id); await refreshAdminFlags(); }}
           onBack={() => setScreen("profiles")}
         />
       )}
@@ -828,7 +706,7 @@ export default function App() {
 
 function Shell({ children }) { return <div className="shell">{children}</div>; }
 
-function Header({ profile, level, isAdmin, onHome, onSwitch }) {
+function Header({ profile, level, isAdmin, account, onHome, onSwitch, onLogout }) {
   return (
     <div className="header">
       <button className="brand" onClick={onHome}>
@@ -838,19 +716,26 @@ function Header({ profile, level, isAdmin, onHome, onSwitch }) {
           <span className="brand-sub">practice · review · improve</span>
         </span>
       </button>
-      {isAdmin ? (
-        <button className="profile-pill admin-pill" onClick={onSwitch} title="Exit admin">
-          <Shield size={14} /> <span>Admin</span> <LogOut size={13} />
-        </button>
-      ) : profile && (
-        <button className="profile-pill" onClick={onSwitch} title="Switch explorer">
-          <span className="profile-avatar">{profile.avatar}</span>
-          <span>{profile.name}</span>
-          <span className="grade-badge">Gr {profile.grade}</span>
-          {level != null && <span className="level-badge">Lv {level}</span>}
-          <Users size={14} />
-        </button>
-      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {isAdmin ? (
+          <button className="profile-pill admin-pill" onClick={onSwitch} title="Exit admin">
+            <Shield size={14} /> <span>Admin</span> <LogOut size={13} />
+          </button>
+        ) : profile && (
+          <button className="profile-pill" onClick={onSwitch} title="Switch explorer">
+            <span className="profile-avatar">{profile.avatar}</span>
+            <span>{profile.name}</span>
+            <span className="grade-badge">Gr {profile.grade}</span>
+            {level != null && <span className="level-badge">Lv {level}</span>}
+            <Users size={14} />
+          </button>
+        )}
+        {account && (
+          <button className="mini-btn ghost" onClick={onLogout} title={`Sign out (${account.email})`}>
+            <LogOut size={13} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -864,7 +749,7 @@ function ProfilesScreen({
   newProfileAvatar, setNewProfileAvatar,
   newProfileGrade, setNewProfileGrade,
   addProfile, selectProfile, confirmDelete, setConfirmDelete, deleteProfile,
-  onAdminClick,
+  showAdminEntry, onAdminClick,
 }) {
   return (
     <div className="screen screen-wide fade-in">
@@ -873,9 +758,11 @@ function ProfilesScreen({
           <h1 className="page-title">Who's practicing today?</h1>
           <p className="page-sub">Pick your explorer, or create a new one with their grade to start a personalised trail.</p>
         </div>
-        <button className="admin-entry" onClick={onAdminClick}>
-          <Shield size={13} /> Admin
-        </button>
+        {showAdminEntry && (
+          <button className="admin-entry" onClick={onAdminClick}>
+            <Shield size={13} /> Admin
+          </button>
+        )}
       </div>
 
       <div className="profile-grid">
@@ -920,48 +807,44 @@ function ProfilesScreen({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Admin login                                                        */
+/*  Family sign-in / sign-up                                           */
 /* ------------------------------------------------------------------ */
 
-function AdminLoginScreen({ hasPassword, error, onSubmit, onBack }) {
+function AuthScreen({ mode, setMode, error, onSubmit }) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const mismatch = !hasPassword && confirm.length > 0 && confirm !== password;
-  const canSubmit = hasPassword ? password.length > 0 : password.length >= 4 && password === confirm;
+  const isSignup = mode === "signup";
+  const canSubmit = email.trim().length > 3 && password.length >= (isSignup ? 8 : 1);
 
   return (
-    <div className="screen fade-in">
-      <button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Back</button>
-      <h1 className="page-title"><Shield size={22} style={{ verticalAlign: "-4px", marginRight: 6 }} />{hasPassword ? "Admin sign-in" : "Set up Admin access"}</h1>
-      <p className="page-sub">
-        {hasPassword
-          ? "Enter the admin password to manage the question bank."
-          : "Create a password to protect the question bank and admin tools. Only you'll need this — kids never see this screen."}
+    <div className="screen fade-in center-col">
+      <h1 className="page-title center">Olympiad Trail</h1>
+      <p className="page-sub center">
+        {isSignup ? "Create a family account to get started." : "Sign in to your family account."}
       </p>
 
-      <div className="setup-card" style={{ maxWidth: 380 }}>
-        <label className="field-label" style={{ marginTop: 0 }}>Password</label>
-        <input type="password" className="text-input" value={password} autoFocus
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && canSubmit && onSubmit(password)} />
+      <div className="setup-card" style={{ maxWidth: 380, width: "100%" }}>
+        <label className="field-label" style={{ marginTop: 0 }}>Email</label>
+        <input type="email" className="text-input" value={email} autoFocus
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && canSubmit && onSubmit(email, password)} />
 
-        {!hasPassword && (
-          <>
-            <label className="field-label">Confirm password</label>
-            <input type="password" className="text-input" value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && canSubmit && onSubmit(password)} />
-          </>
-        )}
+        <label className="field-label">Password</label>
+        <input type="password" className="text-input" value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && canSubmit && onSubmit(email, password)} />
+        {isSignup && <p className="hint-text">Use at least 8 characters.</p>}
 
         {error && <p className="hint-text" style={{ color: "#C6435E" }}>{error}</p>}
-        {mismatch && <p className="hint-text" style={{ color: "#C6435E" }}>Passwords don't match.</p>}
-        {!hasPassword && !mismatch && password.length > 0 && password.length < 4 && (
-          <p className="hint-text">Use at least 4 characters.</p>
-        )}
 
-        <button className="btn primary full lg" style={{ marginTop: 16 }} disabled={!canSubmit} onClick={() => onSubmit(password)}>
-          {hasPassword ? "Sign in" : "Create password & continue"}
+        <button className="btn primary full lg" style={{ marginTop: 16 }} disabled={!canSubmit}
+          onClick={() => onSubmit(email, password)}>
+          {isSignup ? "Create account & continue" : "Sign in"}
+        </button>
+
+        <button className="link-btn center" style={{ marginTop: 12 }}
+          onClick={() => setMode(isSignup ? "login" : "signup")}>
+          {isSignup ? "Already have an account? Sign in" : "New family? Create an account"}
         </button>
       </div>
     </div>
@@ -1272,7 +1155,7 @@ function ResultsScreen({ attempt, meta, allQuestions, onReview, onDone }) {
 /*  Review                                                              */
 /* ------------------------------------------------------------------ */
 
-function ReviewScreen({ attempt, filter, setFilter, flags, onFlag, onUnflag, onBack }) {
+function ReviewScreen({ attempt, filter, setFilter, flags, onFlag, onBack }) {
   const subj = SUBJECTS[attempt.subject];
   const filtered = attempt.answers.filter((a) => {
     if (filter === "correct") return a.selected === a.correctIndex;
@@ -1336,8 +1219,7 @@ function ReviewScreen({ attempt, filter, setFilter, flags, onFlag, onUnflag, onB
               </div>
               {flags[a.id] ? (
                 <div className="flag-row flag-row-flagged">
-                  <Flag size={12} /> Flagged: {FLAG_REASON_LABEL[flags[a.id].reason]}
-                  <button className="flag-undo" onClick={() => onUnflag(a.id)}>Undo</button>
+                  <Flag size={12} /> Flagged: {FLAG_REASON_LABEL[flags[a.id]]}
                 </div>
               ) : (
                 <div className="flag-row">
@@ -1444,7 +1326,7 @@ function AnalyticsScreen({ attempts, allQuestions, onBack }) {
 
 const ROW_CAP = 300;
 
-function AllQuestionsTable({ allQuestions }) {
+function AllQuestionsTable({ allQuestions, onDelete }) {
   const [gradeFilter, setGradeFilter] = useState("all");
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [topicFilter, setTopicFilter] = useState("all");
@@ -1490,7 +1372,7 @@ function AllQuestionsTable({ allQuestions }) {
       <div className="all-q-table-wrap">
         <table className="all-q-table">
           <thead>
-            <tr><th>Subject</th><th>Gr</th><th>Topic</th><th>Question</th><th>Answer</th></tr>
+            <tr><th>Subject</th><th>Gr</th><th>Topic</th><th>Question</th><th>Answer</th>{onDelete && <th></th>}</tr>
           </thead>
           <tbody>
             {shown.map((q) => (
@@ -1500,6 +1382,13 @@ function AllQuestionsTable({ allQuestions }) {
                 <td className="all-q-topic">{topicLabel(q.subject, q.topic)}</td>
                 <td className="all-q-text" title={q.q}>{q.q}</td>
                 <td className="all-q-answer" title={q.options[q.correct]}>{q.options[q.correct]}</td>
+                {onDelete && (
+                  <td>
+                    <button className="mini-btn ghost" onClick={() => onDelete(q.id)} title="Delete question">
+                      <Trash2 size={13} />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -1517,12 +1406,11 @@ function AllQuestionsTable({ allQuestions }) {
 /*  Manage                                                              */
 /* ------------------------------------------------------------------ */
 
-function ManageScreen({ allQuestions, customQuestions, newQ, setNewQ, onAdd, onDelete,
+function ManageScreen({ allQuestions, loading, newQ, setNewQ, onAdd, onDeleteQuestion,
   onCSVUpload, onDownloadTemplate, csvImport, setCsvImport,
-  fileSyncStatus, fileSyncMessage, onConnectFile, onSyncNow, flags, onUnflag, onBack }) {
+  flags, onResolveFlag, onBack }) {
 
   const fileRef = useRef(null);
-  const flaggedList = Object.entries(flags);
 
   // counts per grade+subject for entire bank
   const gradeSubjectCounts = useMemo(() => {
@@ -1539,6 +1427,7 @@ function ManageScreen({ allQuestions, customQuestions, newQ, setNewQ, onAdd, onD
       <button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Back</button>
       <h1 className="page-title"><Shield size={22} style={{ verticalAlign: "-4px", marginRight: 6 }} />Admin · Question bank</h1>
       <p className="page-sub">Manage questions, review flags, and add or bulk-upload new ones.</p>
+      {loading && <p className="hint-text">Loading question bank…</p>}
 
       {/* grade × subject matrix */}
       <div className="bank-table-wrap">
@@ -1569,22 +1458,22 @@ function ManageScreen({ allQuestions, customQuestions, newQ, setNewQ, onAdd, onD
         </table>
       </div>
 
-      <AllQuestionsTable allQuestions={allQuestions} />
+      <AllQuestionsTable allQuestions={allQuestions} onDelete={onDeleteQuestion} />
 
       {/* flagged questions */}
-      {flaggedList.length > 0 && (
+      {flags.length > 0 && (
         <>
-          <h2 className="section-title">Flagged questions ({flaggedList.length})</h2>
+          <h2 className="section-title">Flagged questions ({flags.length})</h2>
           <div className="review-list" style={{ marginBottom: 24 }}>
-            {flaggedList.map(([id, flag]) => {
+            {flags.map((flag) => {
               const s = SUBJECTS[flag.subject];
               return (
-                <div key={id} className="custom-q-row">
+                <div key={flag.id} className="custom-q-row">
                   <span className="tag" style={{ background: s.soft, color: s.color }}><s.icon size={12} /> {s.label}</span>
                   <span className="tag" style={{ background: "#EEF1F6", color: "#5B6478", fontFamily: "monospace" }}>Gr {flag.grade}</span>
                   <span className="tag tag-wrong">{FLAG_REASON_LABEL[flag.reason]}</span>
-                  <span className="custom-q-text">{flag.question}</span>
-                  <button className="mini-btn" onClick={() => onUnflag(id)} title="Clear flag"><Check size={12} /> Clear</button>
+                  <span className="custom-q-text">{flag.questionText}</span>
+                  <button className="mini-btn" onClick={() => onResolveFlag(flag.id)} title="Clear flag"><Check size={12} /> Clear</button>
                 </div>
               );
             })}
@@ -1608,25 +1497,6 @@ function ManageScreen({ allQuestions, customQuestions, newQ, setNewQ, onAdd, onD
         <button className="btn primary full" style={{ marginTop: 12 }} onClick={() => { setCsvImport({ status: "idle", errors: [], count: 0 }); fileRef.current.click(); }}>
           <Upload size={16} /> Choose CSV file
         </button>
-
-        {fileSyncStatus !== "unavailable" && (
-          <div className="file-sync-row">
-            {fileSyncStatus === "connected" ? (
-              <div className="file-sync-connected-row">
-                <span className="file-sync-status file-sync-connected"><Check size={13} /> Connected to questions.js — uploads save there automatically</span>
-                <button className="link-btn" onClick={onSyncNow}>Sync now</button>
-              </div>
-            ) : (
-              <button className="link-btn" onClick={onConnectFile}>
-                <LinkIcon size={13} /> Connect questions.js to save uploads permanently (also saves anything already added)
-              </button>
-            )}
-            {fileSyncStatus === "error" && (
-              <span className="file-sync-status file-sync-error"><AlertCircle size={13} /> Couldn't write to questions.js — click above to reconnect.</span>
-            )}
-            {fileSyncMessage && <div className="file-sync-message">{fileSyncMessage}</div>}
-          </div>
-        )}
 
         {csvImport.status === "success" && (
           <div className="csv-feedback success">
@@ -1700,26 +1570,6 @@ function ManageScreen({ allQuestions, customQuestions, newQ, setNewQ, onAdd, onD
           <Plus size={16} /> Add question
         </button>
       </div>
-
-      {/* Custom questions list */}
-      {customQuestions.length > 0 && (
-        <>
-          <h2 className="section-title">Your added questions ({customQuestions.length})</h2>
-          <div className="review-list">
-            {customQuestions.map((q) => {
-              const s = SUBJECTS[q.subject];
-              return (
-                <div key={q.id} className="custom-q-row">
-                  <span className="tag" style={{ background: s.soft, color: s.color }}><s.icon size={12} /> {s.label}</span>
-                  <span className="tag" style={{ background: "#EEF1F6", color: "#5B6478", fontFamily: "monospace" }}>Gr {q.grade}</span>
-                  <span className="custom-q-text">{q.q}</span>
-                  <button className="mini-btn ghost" onClick={() => onDelete(q.id)}><Trash2 size={14} /></button>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
     </div>
   );
 }
