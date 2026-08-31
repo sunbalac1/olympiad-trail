@@ -823,35 +823,58 @@ function AuthScreen({ mode, setMode, error, onSubmit }) {
   const canSubmit = email.trim().length > 3 && password.length >= (isSignup ? 8 : 1);
 
   return (
-    <div className="screen fade-in center-col">
-      <h1 className="page-title center">Olympiad Trail</h1>
-      <p className="page-sub center">
-        {isSignup ? "Create a family account to get started." : "Sign in to your family account."}
-      </p>
+    <div className="screen fade-in auth-screen">
+      <div className="auth-layout">
+        <div className="auth-intro">
+          <h1 className="page-title">Olympiad Trail</h1>
+          <p className="auth-intro-text">
+            Olympiad exams are enrichment tests in Math, Science, English, and
+            Reasoning that go beyond the regular school curriculum. Held in
+            dozens of countries and taken by millions of students each year,
+            they're a globally recognized way to spot and grow strong
+            problem-solvers.
+          </p>
+          <p className="auth-intro-text">
+            <strong>Olympiad Trail is a free practice space for Grades 4–8</strong> —
+            no cost, no limits.
+          </p>
+          <ul className="auth-highlights">
+            <li><Clock size={15} /> Timed practice rounds</li>
+            <li><Check size={15} /> Instant scoring & worked solutions</li>
+            <li><BarChart3 size={15} /> Analytics to spot exactly what to improve</li>
+          </ul>
+        </div>
 
-      <div className="setup-card" style={{ maxWidth: 380, width: "100%" }}>
-        <label className="field-label" style={{ marginTop: 0 }}>Email</label>
-        <input type="email" className="text-input" value={email} autoFocus
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && canSubmit && onSubmit(email, password)} />
+        <div className="auth-form-col">
+          <p className="page-sub center" style={{ marginTop: 0 }}>
+            {isSignup ? "Create a family account to get started." : "Sign in to your family account."}
+          </p>
 
-        <label className="field-label">Password</label>
-        <input type="password" className="text-input" value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && canSubmit && onSubmit(email, password)} />
-        {isSignup && <p className="hint-text">Use at least 8 characters.</p>}
+          <div className="setup-card" style={{ maxWidth: 380, width: "100%" }}>
+            <label className="field-label" style={{ marginTop: 0 }}>Email</label>
+            <input type="email" className="text-input" value={email} autoFocus
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && canSubmit && onSubmit(email, password)} />
 
-        {error && <p className="hint-text" style={{ color: "#C6435E" }}>{error}</p>}
+            <label className="field-label">Password</label>
+            <input type="password" className="text-input" value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && canSubmit && onSubmit(email, password)} />
+            {isSignup && <p className="hint-text">Use at least 8 characters.</p>}
 
-        <button className="btn primary full lg" style={{ marginTop: 16 }} disabled={!canSubmit}
-          onClick={() => onSubmit(email, password)}>
-          {isSignup ? "Create account & continue" : "Sign in"}
-        </button>
+            {error && <p className="hint-text" style={{ color: "#C6435E" }}>{error}</p>}
 
-        <button className="link-btn center" style={{ marginTop: 12 }}
-          onClick={() => setMode(isSignup ? "login" : "signup")}>
-          {isSignup ? "Already have an account? Sign in" : "New family? Create an account"}
-        </button>
+            <button className="btn primary full lg" style={{ marginTop: 16 }} disabled={!canSubmit}
+              onClick={() => onSubmit(email, password)}>
+              {isSignup ? "Create account & continue" : "Sign in"}
+            </button>
+
+            <button className="link-btn center" style={{ marginTop: 12 }}
+              onClick={() => setMode(isSignup ? "login" : "signup")}>
+              {isSignup ? "Already have an account? Sign in" : "New family? Create an account"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1763,6 +1786,18 @@ function GlobalStyle() {
       .legend-skipped { background:#C4801A; }
       .legend-unvisited { background:var(--line); }
 
+      /* auth (sign in / sign up) */
+      .auth-screen { padding-top:32px; }
+      .auth-layout { display:flex; flex-direction:column; gap:32px; }
+      .auth-intro { text-align:center; }
+      .auth-intro .page-title { text-align:center; }
+      .auth-intro-text { color:var(--ink-soft); font-size:14px; line-height:1.6; max-width:460px; margin:0 auto 10px; }
+      .auth-intro-text strong { color:var(--ink); }
+      .auth-highlights { list-style:none; margin:16px auto 0; padding:0; display:flex; flex-direction:column; gap:8px; max-width:300px; }
+      .auth-highlights li { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:10px; padding:9px 13px; }
+      .auth-highlights li svg { flex-shrink:0; color:var(--brand-a); }
+      .auth-form-col { display:flex; flex-direction:column; align-items:center; }
+
       /* results */
       .center-col { display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:40px; }
       .stamp-reveal { position:relative; animation:stampIn .5s cubic-bezier(.34,1.56,.64,1); margin-bottom:20px; }
@@ -1929,6 +1964,14 @@ function GlobalStyle() {
         .avatar-picker{gap:7px;}
         .avatar-opt{font-size:21px;padding:5px 8px;}
         .mini-btn.ghost{padding:7px;}
+
+        .auth-screen{ max-width:900px; padding-top:56px; }
+        .auth-layout{ flex-direction:row; align-items:center; gap:64px; }
+        .auth-intro{ flex:1; text-align:left; }
+        .auth-intro .page-title{ text-align:left; font-size:34px; }
+        .auth-intro-text{ margin:0 0 10px; }
+        .auth-highlights{ margin:18px 0 0; align-items:flex-start; }
+        .auth-form-col{ flex:0 0 380px; }
 
         /* question + tracker side by side; the tracker replaces the compact dot row */
         .exam-screen.screen-wide{ max-width:1180px; }
