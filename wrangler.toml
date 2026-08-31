@@ -8,3 +8,7 @@ not_found_handling = "single-page-application"
 [[routes]]
 pattern = "nalnaal.com"
 custom_domain = true
+
+[[routes]]
+pattern = "www.nalnaal.com"
+custom_domain = true
