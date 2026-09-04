@@ -341,6 +341,8 @@ export default function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminAnalytics, setAdminAnalytics] = useState({ totalAttempts: 0, totalStudents: 0, topics: [] });
   const [adminAnalyticsLoading, setAdminAnalyticsLoading] = useState(false);
+  const [adminResponses, setAdminResponses] = useState([]);
+  const [adminResponsesLoading, setAdminResponsesLoading] = useState(false);
 
   // on load, check for an existing session before deciding whether to show the auth screen
   useEffect(() => {
@@ -359,7 +361,7 @@ export default function App() {
 
   // safety net: never render an admin screen for a non-admin session
   useEffect(() => {
-    if ((screen === "admin" || screen === "admin-analytics") && !account?.isAdmin) setScreen("profiles");
+    if ((screen === "admin" || screen === "admin-analytics" || screen === "admin-responses") && !account?.isAdmin) setScreen("profiles");
   }, [screen, account]);
 
   // load the full question bank + open flags whenever the admin screen is opened
@@ -375,6 +377,14 @@ export default function App() {
     if (screen !== "admin-analytics" || !account?.isAdmin) return;
     setAdminAnalyticsLoading(true);
     refreshAdminAnalytics().finally(() => setAdminAnalyticsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, account?.isAdmin]);
+
+  // load the raw per-question response dump whenever that screen is opened
+  useEffect(() => {
+    if (screen !== "admin-responses" || !account?.isAdmin) return;
+    setAdminResponsesLoading(true);
+    api.adminListResponses().then(setAdminResponses).finally(() => setAdminResponsesLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, account?.isAdmin]);
 
@@ -713,6 +723,7 @@ export default function App() {
           flags={adminFlags}
           onResolveFlag={async (id) => { await api.adminResolveFlag(id); await refreshAdminFlags(); }}
           onViewAnalytics={() => setScreen("admin-analytics")}
+          onViewResponses={() => setScreen("admin-responses")}
           onBack={() => setScreen("profiles")}
         />
       )}
@@ -720,6 +731,13 @@ export default function App() {
       {screen === "admin-analytics" && account.isAdmin && (
         <AdminAnalyticsScreen
           data={adminAnalytics} loading={adminAnalyticsLoading}
+          onBack={() => setScreen("admin")}
+        />
+      )}
+
+      {screen === "admin-responses" && account.isAdmin && (
+        <AdminResponsesScreen
+          responses={adminResponses} loading={adminResponsesLoading}
           onBack={() => setScreen("admin")}
         />
       )}
@@ -1476,6 +1494,107 @@ function AdminAnalyticsScreen({ data, loading, onBack }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Admin: raw response dump                                           */
+/* ------------------------------------------------------------------ */
+
+const RESPONSE_ROW_CAP = 300;
+
+function downloadResponsesCSV(rows) {
+  const header = ["Account", "Student ID", "Student Name", "Grade", "Subject", "Topic", "Question", "Selected Answer", "Correct Answer", "Correct?", "Attempt Date"];
+  const escape = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const body = rows.map((r) => [
+    r.accountEmail, r.studentId, r.studentName, r.grade, r.subject, r.topic,
+    r.question, r.selectedText ?? "(skipped)", r.correctText, r.isCorrect ? "Yes" : "No",
+    new Date(r.attemptDate).toLocaleString(),
+  ].map(escape).join(","));
+  const csv = [header.map(escape).join(","), ...body].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "olympiad-trail-responses.csv";
+  a.click();
+}
+
+function AdminResponsesScreen({ responses, loading, onBack }) {
+  const [accountFilter, setAccountFilter] = useState("");
+  const [idFilter, setIdFilter] = useState("");
+  const [nameFilter, setNameFilter] = useState("");
+
+  const filtered = useMemo(() => {
+    const account = accountFilter.trim().toLowerCase();
+    const id = idFilter.trim();
+    const name = nameFilter.trim().toLowerCase();
+    return responses.filter((r) => {
+      if (account && !r.accountEmail.toLowerCase().includes(account)) return false;
+      if (id && String(r.studentId) !== id) return false;
+      if (name && !r.studentName.toLowerCase().includes(name)) return false;
+      return true;
+    });
+  }, [responses, accountFilter, idFilter, nameFilter]);
+
+  const shown = filtered.slice(0, RESPONSE_ROW_CAP);
+
+  return (
+    <div className="screen screen-wide fade-in">
+      <button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Back</button>
+      <div className="row-between">
+        <div>
+          <h1 className="page-title"><Download size={22} style={{ verticalAlign: "-4px", marginRight: 6 }} />Response dump</h1>
+          <p className="page-sub">Every question answered, by every student, across every family.</p>
+        </div>
+        <button className="btn ghost" onClick={() => downloadResponsesCSV(filtered)} disabled={filtered.length === 0} style={{ flexShrink: 0 }}>
+          <Download size={15} /> Export CSV
+        </button>
+      </div>
+      {loading && <p className="hint-text">Loading responses…</p>}
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <input className="text-input" style={{ width: 240 }} placeholder="Filter by account email"
+          value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)} />
+        <input className="text-input" style={{ width: 150 }} placeholder="Filter by student ID"
+          value={idFilter} onChange={(e) => setIdFilter(e.target.value)} />
+        <input className="text-input" style={{ width: 190 }} placeholder="Filter by student name"
+          value={nameFilter} onChange={(e) => setNameFilter(e.target.value)} />
+      </div>
+
+      <div className="field-label" style={{ margin: "0 0 10px" }}>{filtered.length} response{filtered.length === 1 ? "" : "s"}</div>
+
+      <div className="responses-table-wrap">
+        <table className="responses-table">
+          <thead>
+            <tr>
+              <th>Account</th><th>Student ID</th><th>Student</th><th>Gr</th><th>Subject</th><th>Topic</th>
+              <th>Question</th><th>Selected</th><th>Correct answer</th><th>Result</th><th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r, i) => (
+              <tr key={`${r.attemptId}-${i}`}>
+                <td>{r.accountEmail}</td>
+                <td>{r.studentId}</td>
+                <td>{r.studentName}</td>
+                <td>{r.grade}</td>
+                <td><span className="tag" style={{ background: SUBJECTS[r.subject]?.soft, color: SUBJECTS[r.subject]?.color }}>{SUBJECTS[r.subject]?.label}</span></td>
+                <td>{topicLabel(r.subject, r.topic)}</td>
+                <td title={r.question}>{r.question}</td>
+                <td title={r.selectedText || ""}>{r.selectedText ?? <span className="zero">skipped</span>}</td>
+                <td title={r.correctText}>{r.correctText}</td>
+                <td>{r.isCorrect ? <span className="tag tag-correct"><Check size={12} /> Correct</span> : <span className="tag tag-wrong"><X size={12} /> Wrong</span>}</td>
+                <td>{new Date(r.attemptDate).toLocaleDateString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {filtered.length === 0 && !loading && <div className="empty-box">No responses match those filters.</div>}
+      {filtered.length > RESPONSE_ROW_CAP && (
+        <p className="hint-text">Showing first {RESPONSE_ROW_CAP} of {filtered.length} in the table — "Export CSV" still exports all of them.</p>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  All questions (admin) — full table with grade / subject / topic filters */
 /* ------------------------------------------------------------------ */
 
@@ -1563,7 +1682,7 @@ function AllQuestionsTable({ allQuestions, onDelete }) {
 
 function ManageScreen({ allQuestions, loading, newQ, setNewQ, onAdd, onDeleteQuestion,
   onCSVUpload, onDownloadTemplate, csvImport, setCsvImport,
-  flags, onResolveFlag, onViewAnalytics, onBack }) {
+  flags, onResolveFlag, onViewAnalytics, onViewResponses, onBack }) {
 
   const fileRef = useRef(null);
 
@@ -1585,9 +1704,14 @@ function ManageScreen({ allQuestions, loading, newQ, setNewQ, onAdd, onDeleteQue
           <h1 className="page-title"><Shield size={22} style={{ verticalAlign: "-4px", marginRight: 6 }} />Admin · Question bank</h1>
           <p className="page-sub">Manage questions, review flags, and add or bulk-upload new ones.</p>
         </div>
-        <button className="admin-entry" onClick={onViewAnalytics}>
-          <BarChart3 size={13} /> Student analytics
-        </button>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <button className="admin-entry" onClick={onViewAnalytics}>
+            <BarChart3 size={13} /> Student analytics
+          </button>
+          <button className="admin-entry" onClick={onViewResponses}>
+            <Download size={13} /> Response dump
+          </button>
+        </div>
       </div>
       {loading && <p className="hint-text">Loading question bank…</p>}
 
@@ -2046,6 +2170,13 @@ function GlobalStyle() {
       .all-q-grade { font-family:'IBM Plex Mono',monospace; font-weight:600; }
       .all-q-topic { color:var(--ink-soft); }
       .all-q-answer { color:#0E8F82; font-weight:600; }
+
+      .responses-table-wrap { overflow-x:auto; margin-top:14px; max-height:520px; overflow-y:auto; border:1px solid var(--line); border-radius:12px; }
+      .responses-table { width:100%; min-width:980px; border-collapse:collapse; font-size:12.5px; }
+      .responses-table th { position:sticky; top:0; background:var(--card); border-bottom:1px solid var(--line); padding:8px 10px; text-align:left; font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); z-index:1; white-space:nowrap; }
+      .responses-table td { border-bottom:1px solid var(--line); padding:8px 10px; vertical-align:top; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .responses-table tr:last-child td { border-bottom:none; }
+
       .option-input-row { display:flex; align-items:center; gap:10px; }
       .radio-btn { width:22px; height:22px; border-radius:50%; border:1.5px solid var(--line); background:var(--card); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#0E8F82; }
       .radio-btn-selected { border-color:#0E8F82; background:#D3F3EE; }

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, eq, ilike, isNull } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { questions, flags, attempts } from "../db/schema.js";
+import { questions, flags, attempts, students, accounts } from "../db/schema.js";
 import { requireAuth, requireAdmin } from "../lib/auth.js";
 
 export const adminRoutes = new Hono();
@@ -139,4 +139,48 @@ adminRoutes.get("/analytics", async (c) => {
   });
 
   return c.json({ totalAttempts: allAttempts.length, totalStudents: studentIds.size, topics: topicStats });
+});
+
+// Raw, per-question dump of every response across every account — the
+// row-level detail behind the aggregated /analytics numbers above.
+// Filtering/searching happens client-side on this full set; the dataset
+// this app produces stays small enough that a second round-trip per
+// keystroke isn't worth the complexity.
+adminRoutes.get("/responses", async (c) => {
+  const db = getDb(c.env.DATABASE_URL);
+
+  const [studentRows, attemptRows, allQuestions] = await Promise.all([
+    db.select({
+      studentId: students.id, studentName: students.name, studentGrade: students.grade,
+      accountEmail: accounts.email,
+    }).from(students).innerJoin(accounts, eq(students.accountId, accounts.id)),
+    db.select({
+      id: attempts.id, studentId: attempts.studentId, subject: attempts.subject, grade: attempts.grade,
+      answers: attempts.answers, createdAt: attempts.createdAt,
+    }).from(attempts),
+    db.select({ id: questions.id, topic: questions.topic }).from(questions),
+  ]);
+  const studentById = new Map(studentRows.map((s) => [s.studentId, s]));
+  const topicById = new Map(allQuestions.map((q) => [q.id, q.topic]));
+
+  const rows = [];
+  attemptRows.forEach((a) => {
+    const student = studentById.get(a.studentId);
+    if (!student) return; // defensive: shouldn't happen, FK-enforced
+    a.answers.forEach((ans) => {
+      rows.push({
+        attemptId: a.id, attemptDate: a.createdAt,
+        accountEmail: student.accountEmail, studentId: a.studentId,
+        studentName: student.studentName, studentGrade: student.studentGrade,
+        subject: a.subject, grade: a.grade, topic: topicById.get(ans.id) || "uncategorized",
+        question: ans.question,
+        selectedText: ans.selected !== null ? ans.options[ans.selected] : null,
+        correctText: ans.options[ans.correctIndex],
+        isCorrect: ans.selected !== null && ans.selected === ans.correctIndex,
+      });
+    });
+  });
+
+  rows.sort((a, b) => new Date(b.attemptDate) - new Date(a.attemptDate));
+  return c.json(rows);
 });

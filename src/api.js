@@ -58,4 +58,5 @@ export const api = {
   adminListFlags: () => request("/admin/flags"),
   adminResolveFlag: (id) => request(`/admin/flags/${id}/resolve`, { method: "POST" }),
   adminAnalytics: () => request("/admin/analytics"),
+  adminListResponses: () => request("/admin/responses"),
 };
