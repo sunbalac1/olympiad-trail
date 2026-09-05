@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { and, eq, ilike, isNull } from "drizzle-orm";
+import { and, eq, ilike, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { questions, flags, attempts, students, accounts } from "../db/schema.js";
+import { questions, flags, attempts, students, accounts, questionResponses } from "../db/schema.js";
 import { requireAuth, requireAdmin } from "../lib/auth.js";
 
 export const adminRoutes = new Hono();
@@ -112,33 +112,37 @@ adminRoutes.post("/flags/:id/resolve", async (c) => {
 // screen already uses client-side, just aggregated across every account.
 adminRoutes.get("/analytics", async (c) => {
   const db = getDb(c.env.DATABASE_URL);
-  const [allAttempts, allQuestions] = await Promise.all([
-    db.select({ grade: attempts.grade, subject: attempts.subject, studentId: attempts.studentId, answers: attempts.answers }).from(attempts),
-    db.select({ id: questions.id, topic: questions.topic }).from(questions),
-  ]);
-  const topicById = new Map(allQuestions.map((q) => [q.id, q.topic]));
 
-  const buckets = {};
-  const studentIds = new Set();
-  allAttempts.forEach((a) => {
-    studentIds.add(a.studentId);
-    a.answers.forEach((ans) => {
-      const topic = topicById.get(ans.id) || "uncategorized";
-      const key = `${a.grade}:${a.subject}:${topic}`;
-      if (!buckets[key]) buckets[key] = { grade: a.grade, subject: a.subject, topic, correct: 0, total: 0 };
-      const b = buckets[key];
-      b.total += 1;
-      if (ans.selected !== null && ans.selected === ans.correctIndex) b.correct += 1;
-    });
-  });
+  const [summary] = await db.select({
+    totalAttempts: sql`count(*)`.mapWith(Number),
+    totalStudents: sql`count(distinct ${attempts.studentId})`.mapWith(Number),
+  }).from(attempts);
 
-  const topicStats = Object.values(buckets).map((b) => {
+  // Grouped directly in Postgres now that question_responses exists, instead
+  // of fetching every attempt's answers JSONB and reducing in JS. Grouping by
+  // questions.grade/subject (rather than attempts.grade/subject) is
+  // equivalent in practice — exam selection always scopes a question's
+  // grade/subject to match the attempt it was answered in — and it also
+  // means topic always reflects the question's *current* classification,
+  // same as the old implementation's live topicById lookup did.
+  const topicRows = await db.select({
+    grade: questions.grade,
+    subject: questions.subject,
+    topic: questions.topic,
+    total: sql`count(*)`.mapWith(Number),
+    correct: sql`count(*) filter (where ${questionResponses.isCorrect})`.mapWith(Number),
+  })
+    .from(questionResponses)
+    .innerJoin(questions, eq(questionResponses.questionId, questions.id))
+    .groupBy(questions.grade, questions.subject, questions.topic);
+
+  const topics = topicRows.map((b) => {
     const pct = Math.round((b.correct / b.total) * 100);
     const tier = b.total < 3 ? "learning" : pct >= 75 ? "strong" : pct >= 50 ? "average" : "needs-improvement";
     return { ...b, pct, tier };
   });
 
-  return c.json({ totalAttempts: allAttempts.length, totalStudents: studentIds.size, topics: topicStats });
+  return c.json({ totalAttempts: summary.totalAttempts, totalStudents: summary.totalStudents, topics });
 });
 
 // Raw, per-question dump of every response across every account — the
