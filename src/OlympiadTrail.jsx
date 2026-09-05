@@ -4,9 +4,10 @@ import {
   Check, X, Plus, Trash2, ArrowLeft, Play, Sparkles, Users, Minus,
   Upload, Download, AlertCircle, GraduationCap,
   Compass, Zap, Star, Trophy, Flame, Lock, Flag, BarChart3, TrendingUp, TrendingDown, Lightbulb,
-  Shield, LogOut,
+  Shield, LogOut, Target,
 } from "lucide-react";
 import { topicsForSubject, topicLabel } from "./topics";
+import { misconceptionsFor, misconceptionLabel } from "./misconceptions";
 import { api, mapQuestion, mapAttempt } from "./api";
 
 /* ------------------------------------------------------------------ */
@@ -35,8 +36,8 @@ const FLAG_REASON_LABEL = Object.fromEntries(FLAG_REASONS.map((r) => [r.id, r.la
 /*  CSV template                                                        */
 /* ------------------------------------------------------------------ */
 
-const CSV_TEMPLATE = `subject,grade,topic,question,optionA,optionB,optionC,optionD,correct,solution
-math,5,"Number System & Arithmetic","What is 7 × 8?","54","56","64","48",B,"7 × 8 = 56"
+const CSV_TEMPLATE = `subject,grade,topic,question,optionA,optionB,optionC,optionD,correct,solution,tagA,tagB,tagC,tagD
+math,5,"Number System & Arithmetic","What is 7 × 8?","54","56","64","48",B,"7 × 8 = 56",wrong-operation,,careless-slip,
 science,6,"Physics","Which planet has rings?","Mars","Venus","Saturn","Jupiter",C,"Saturn is famous for its prominent ring system"
 `;
 
@@ -233,11 +234,14 @@ function parseCSV(text) {
 
     if (cols.length < 9) { errors.push(`Row ${row}: need at least 9 columns (got ${cols.length})`); return; }
     // topic is optional: accept the older 9-column layout (no topic) alongside the
-    // current 10-column one (subject,grade,topic,question,...)
+    // current 10-column one (subject,grade,topic,question,...). Misconception tags
+    // (tagA-D, one per option) are a further-optional 4 trailing columns on top of
+    // that — a 14-column row has them, anything shorter just has no tag data.
     const hasTopicCol = cols.length >= 10;
     const [subj, gradeStr, ...rest] = cols;
-    const [topicRaw, question, optA, optB, optC, optD, correctLetter, solution] =
+    const [topicRaw, question, optA, optB, optC, optD, correctLetter, solution, ...tagRest] =
       hasTopicCol ? rest : [undefined, ...rest];
+    const optionTags = tagRest.length === 4 ? tagRest.map((t) => (t && t.trim() ? t.trim() : null)) : null;
 
     const subject = subj.toLowerCase().trim();
     if (!SUBJECTS[subject]) { errors.push(`Row ${row}: unknown subject '${subj}'. Use math/science/english/reasoning`); return; }
@@ -262,6 +266,7 @@ function parseCSV(text) {
       options: [optA, optB, optC, optD],
       correct,
       solution: solution || "",
+      optionTags,
     });
   });
   return { questions, errors };
@@ -336,7 +341,7 @@ export default function App() {
   const [examTotalSec, setExamTotalSec] = useState(0);
   const timerRef = useRef(null);
 
-  const [newQ, setNewQ] = useState({ subject: "math", grade: 5, topic: topicsForSubject("math")[0].id, q: "", options: ["","","",""], correct: 0, solution: "" });
+  const [newQ, setNewQ] = useState({ subject: "math", grade: 5, topic: topicsForSubject("math")[0].id, q: "", options: ["","","",""], correct: 0, solution: "", optionTags: [null, null, null, null] });
   const [csvImport, setCsvImport] = useState({ status: "idle", errors: [], count: 0 }); // idle | success | error
   const [adminQuestions, setAdminQuestions] = useState([]);
   const [adminFlags, setAdminFlags] = useState([]);
@@ -586,9 +591,10 @@ export default function App() {
       subject: newQ.subject, grade: newQ.grade, topic: newQ.topic,
       questionText: stripQuestionPrefix(newQ.q.trim()), options: cleaned,
       correctIndex: newQ.correct, solution: newQ.solution.trim(),
+      optionTags: newQ.optionTags,
     });
     await refreshAdminQuestions();
-    setNewQ({ ...newQ, q: "", options: ["","","",""], correct: 0, solution: "" });
+    setNewQ({ ...newQ, q: "", options: ["","","",""], correct: 0, solution: "", optionTags: [null, null, null, null] });
   }
 
   async function deleteAdminQuestion(id) {
@@ -611,6 +617,7 @@ export default function App() {
     const payload = questions.map((q) => ({
       subject: q.subject, grade: q.grade, topic: q.topic,
       questionText: q.q, options: q.options, correctIndex: q.correct, solution: q.solution,
+      optionTags: q.optionTags,
     }));
     const result = await api.adminBulkQuestions(payload);
     await refreshAdminQuestions();
@@ -684,7 +691,7 @@ export default function App() {
 
       {screen === "analytics" && currentProfile && (
         <AnalyticsScreen
-          attempts={attempts} allQuestions={gradeQuestions}
+          attempts={attempts} allQuestions={gradeQuestions} studentId={currentStudentId}
           onBack={() => setScreen("dashboard")}
         />
       )}
@@ -1339,9 +1346,40 @@ const TIER_META = {
   learning: { label: "Still Learning", className: "tier-learning" },
 };
 
-function AnalyticsScreen({ attempts, allQuestions, onBack }) {
+// Ranks weak-ish topics by (100-pct) weighted down for small sample sizes, and
+// attaches the dominant misconception tag for that topic if any of the
+// student's wrong answers there were tagged — the "why" behind the "what".
+function buildFocusPlan(stats, misconceptions) {
+  const misconceptionsByTopic = {};
+  misconceptions.forEach((m) => {
+    (misconceptionsByTopic[`${m.subject}:${m.topic}`] ||= []).push(m);
+  });
+
+  return stats
+    .filter((s) => s.tier !== "strong")
+    .map((s) => ({ ...s, severity: (100 - s.pct) * Math.min(1, s.total / 5) }))
+    .sort((a, b) => b.severity - a.severity)
+    .slice(0, 3)
+    .map((s) => {
+      const dominant = (misconceptionsByTopic[`${s.subject}:${s.topic}`] || []).sort((a, b) => b.count - a.count)[0];
+      return { ...s, misconceptionTag: dominant?.tag || null, misconceptionCount: dominant?.count || 0 };
+    });
+}
+
+function AnalyticsScreen({ attempts, allQuestions, studentId, onBack }) {
   const stats = useMemo(() => computeTopicStats(attempts, allQuestions), [attempts, allQuestions]);
   const patterns = useMemo(() => detectPatterns(attempts, allQuestions), [attempts, allQuestions]);
+
+  // The one thing that can't be computed client-side: misconception tags live
+  // only on the server (never sent with question payloads, so a wrong answer's
+  // "why" has to be fetched, not derived from data the client already has).
+  const [misconceptions, setMisconceptions] = useState([]);
+  useEffect(() => {
+    if (!studentId) return;
+    api.studentInsights(studentId).then((data) => setMisconceptions(data.misconceptions)).catch(() => setMisconceptions([]));
+  }, [studentId]);
+
+  const focusPlan = useMemo(() => buildFocusPlan(stats, misconceptions), [stats, misconceptions]);
 
   const bySubject = useMemo(() => {
     const grouped = {};
@@ -1365,6 +1403,26 @@ function AnalyticsScreen({ attempts, allQuestions, onBack }) {
       <button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Back</button>
       <h1 className="page-title">Analytics</h1>
       <p className="page-sub">Topic-by-topic strengths, based on every practice round so far.</p>
+
+      {focusPlan.length > 0 ? (
+        <div className="pattern-card" style={{ background: "#FBDEE3", borderColor: "#F0AABB" }}>
+          <div className="pattern-card-title"><Target size={15} /> Focus plan</div>
+          <ul className="pattern-list">
+            {focusPlan.map((item) => (
+              <li key={`${item.subject}:${item.topic}`}>
+                <strong>{topicLabel(item.subject, item.topic)}</strong> ({item.pct}% so far) — {item.misconceptionTag
+                  ? `${item.misconceptionCount} of the wrong answers here came from "${misconceptionLabel(item.misconceptionTag)}" — that's the specific thing to target.`
+                  : "more practice here should help."}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <div className="pattern-card" style={{ background: "#D3F3EE", borderColor: "#9FDDCF" }}>
+          <div className="pattern-card-title"><Target size={15} /> Focus plan</div>
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-soft)" }}>No weak spots right now — great work across every topic practiced so far!</p>
+        </div>
+      )}
 
       {patterns.length > 0 && (
         <div className="pattern-card">
@@ -1784,7 +1842,7 @@ function ManageScreen({ allQuestions, loading, newQ, setNewQ, onAdd, onDeleteQue
         <div className="row-between" style={{ alignItems: "center" }}>
           <div>
             <div className="field-label" style={{ margin: 0 }}>Bulk upload via CSV</div>
-            <p className="hint-text" style={{ marginTop: 4 }}>Columns: subject, grade, topic, question, optionA–D, correct (A/B/C/D), solution — topic is optional (leave blank for "Uncategorized"); use a topic name like "Number System &amp; Arithmetic" or its id like "number-system"</p>
+            <p className="hint-text" style={{ marginTop: 4 }}>Columns: subject, grade, topic, question, optionA–D, correct (A/B/C/D), solution — topic is optional (leave blank for "Uncategorized"); use a topic name like "Number System &amp; Arithmetic" or its id like "number-system". Four more optional trailing columns (tagA–D) can tag each wrong option with a misconception id (e.g. "wrong-operation") — leave blank for untagged.</p>
           </div>
           <button className="btn ghost" onClick={onDownloadTemplate} style={{ flexShrink: 0 }}>
             <Download size={15} /> Template
@@ -1857,6 +1915,13 @@ function ManageScreen({ allQuestions, loading, newQ, setNewQ, onAdd, onDeleteQue
             </button>
             <input className="text-input" placeholder={`Option ${String.fromCharCode(65 + i)}`} value={opt}
               onChange={(e) => { const opts = [...newQ.options]; opts[i] = e.target.value; setNewQ({ ...newQ, options: opts }); }} />
+            {newQ.correct !== i && (
+              <select className="filter-select" style={{ flexShrink: 0 }} value={newQ.optionTags[i] || ""}
+                onChange={(e) => { const tags = [...newQ.optionTags]; tags[i] = e.target.value || null; setNewQ({ ...newQ, optionTags: tags }); }}>
+                <option value="">Untagged</option>
+                {misconceptionsFor(newQ.subject).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            )}
           </div>
         ))}
 

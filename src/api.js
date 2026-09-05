@@ -49,6 +49,7 @@ export const api = {
 
   submitAttempt: (attempt) => request("/attempts", { method: "POST", body: JSON.stringify(attempt) }),
   listAttempts: (studentId) => request(`/attempts/student/${studentId}`),
+  studentInsights: (studentId) => request(`/students/${studentId}/insights`),
 
   flagQuestion: (body) => request("/flags", { method: "POST", body: JSON.stringify(body) }),
 
