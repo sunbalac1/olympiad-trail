@@ -1,8 +1,9 @@
 import { Hono } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { students } from "../db/schema.js";
+import { students, questions, questionResponses } from "../db/schema.js";
 import { requireAuth } from "../lib/auth.js";
+import { assertOwnsStudent } from "../lib/ownership.js";
 
 export const studentRoutes = new Hono();
 studentRoutes.use("*", requireAuth);
@@ -25,6 +26,40 @@ studentRoutes.post("/", async (c) => {
   const db = getDb(c.env.DATABASE_URL);
   const [student] = await db.insert(students).values({ accountId, name: name.trim(), avatar, grade }).returning();
   return c.json(student);
+});
+
+// The one thing the client genuinely can't compute itself: topic stats and
+// trends already work client-side from data the family already has (see
+// computeTopicStats/detectPatterns in OlympiadTrail.jsx), but optionTags is
+// deliberately never sent to students (see questions.js), so misconception
+// frequency can only be computed here, where that column is actually
+// reachable. Grouped by subject+topic+tag among this student's wrong
+// answers only — the client combines this with its own topic stats to build
+// the focus plan and render the final message text.
+studentRoutes.get("/:id/insights", async (c) => {
+  const { id: accountId } = c.get("account");
+  const studentId = Number(c.req.param("id"));
+  const db = getDb(c.env.DATABASE_URL);
+
+  if (!(await assertOwnsStudent(db, accountId, studentId))) {
+    return c.json({ error: "Student not found." }, 404);
+  }
+
+  const rows = await db.select({
+    subject: questions.subject,
+    topic: questions.topic,
+    tag: sql`${questions.optionTags} ->> ${questionResponses.selectedIndex}`,
+    count: sql`count(*)`.mapWith(Number),
+  })
+    .from(questionResponses)
+    .innerJoin(questions, eq(questionResponses.questionId, questions.id))
+    .where(and(
+      eq(questionResponses.studentId, studentId),
+      eq(questionResponses.isCorrect, false),
+    ))
+    .groupBy(questions.subject, questions.topic, sql`${questions.optionTags} ->> ${questionResponses.selectedIndex}`);
+
+  return c.json({ misconceptions: rows.filter((r) => r.tag !== null) });
 });
 
 studentRoutes.delete("/:id", async (c) => {

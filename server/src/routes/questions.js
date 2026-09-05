@@ -19,6 +19,16 @@ function shuffle(arr) {
 
 // The question bank is shared content, same for every account — no
 // account-scoping here, unlike students/attempts/flags.
+//
+// Explicit column list (never `select()`) is deliberate: optionTags must
+// never reach a student-facing payload — a tag's presence on wrong options
+// and absence on the correct one would trivially reveal the answer.
+const PUBLIC_QUESTION_COLUMNS = {
+  id: questions.id, subject: questions.subject, grade: questions.grade, topic: questions.topic,
+  questionText: questions.questionText, options: questions.options,
+  correctIndex: questions.correctIndex, solution: questions.solution,
+};
+
 questionRoutes.get("/", async (c) => {
   const db = getDb(c.env.DATABASE_URL);
   const { subject, grade, topic } = c.req.query();
@@ -29,8 +39,8 @@ questionRoutes.get("/", async (c) => {
   if (topic) conditions.push(eq(questions.topic, topic));
 
   const rows = conditions.length > 0
-    ? await db.select().from(questions).where(and(...conditions))
-    : await db.select().from(questions);
+    ? await db.select(PUBLIC_QUESTION_COLUMNS).from(questions).where(and(...conditions))
+    : await db.select(PUBLIC_QUESTION_COLUMNS).from(questions);
 
   return c.json(rows);
 });

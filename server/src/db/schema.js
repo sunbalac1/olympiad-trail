@@ -31,6 +31,14 @@ export const questions = pgTable("questions", {
   options: jsonb("options").notNull(), // string[4]
   correctIndex: integer("correct_index").notNull(),
   solution: text("solution").notNull().default(""),
+  // Optional misconception tag per option, index-aligned with `options` —
+  // e.g. optionTags[1] = "wrong-operation" describes what picking option B
+  // reveals. The correct option's slot is always null (only wrong answers
+  // represent a misconception); untagged questions are just all-null. NEVER
+  // include this column in a student-facing question payload — presence vs.
+  // absence of a tag trivially reveals which option is correct, independent
+  // of what any tag means. Admin-only + the insights route may read it.
+  optionTags: jsonb("option_tags"), // (string|null)[4], nullable
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

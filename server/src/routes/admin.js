@@ -15,7 +15,20 @@ function validateQuestion(q) {
   if (!Number.isInteger(q.correctIndex) || q.correctIndex < 0 || q.correctIndex > 3) {
     return "correctIndex must be 0-3.";
   }
+  if (q.optionTags !== undefined && q.optionTags !== null && (!Array.isArray(q.optionTags) || q.optionTags.length !== 4)) {
+    return "optionTags, if provided, must be an array of exactly 4 entries.";
+  }
   return null;
+}
+
+// Optional per-option misconception tags — always an array of 4 (or null if
+// nothing was actually tagged), with the correct answer's slot forced to
+// null regardless of what was sent, since only a wrong option represents a
+// misconception. Never trust the client's correctIndex slot blindly here.
+function normalizeOptionTags(tags, correctIndex) {
+  if (!Array.isArray(tags)) return null;
+  const cleaned = [0, 1, 2, 3].map((i) => (i === correctIndex ? null : (tags[i] ? String(tags[i]) : null)));
+  return cleaned.some((t) => t !== null) ? cleaned : null;
 }
 
 // The "All questions" table: same grade/subject/topic filters as the public
@@ -46,6 +59,7 @@ adminRoutes.post("/questions", async (c) => {
     subject: body.subject, grade: body.grade, topic: body.topic || "uncategorized",
     questionText: body.questionText.trim(), options: body.options,
     correctIndex: body.correctIndex, solution: body.solution || "",
+    optionTags: normalizeOptionTags(body.optionTags, body.correctIndex),
   }).returning();
   return c.json(question);
 });
@@ -67,6 +81,7 @@ adminRoutes.post("/questions/bulk", async (c) => {
       subject: q.subject, grade: q.grade, topic: q.topic || "uncategorized",
       questionText: q.questionText.trim(), options: q.options,
       correctIndex: q.correctIndex, solution: q.solution || "",
+      optionTags: normalizeOptionTags(q.optionTags, q.correctIndex),
     });
   });
 
