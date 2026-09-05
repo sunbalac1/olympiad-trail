@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, eq, desc } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { attempts, students } from "../db/schema.js";
+import { attempts, students, questionResponses } from "../db/schema.js";
 import { requireAuth } from "../lib/auth.js";
 import { assertOwnsStudent } from "../lib/ownership.js";
 
@@ -30,6 +30,25 @@ attemptRoutes.post("/", async (c) => {
     timeTakenSec: timeTakenSec ?? 0,
     answers,
   }).returning();
+
+  // Best-effort: the neon-http driver has no interactive transactions, so this
+  // can't be atomic with the insert above. A dropped write here only makes the
+  // "least attempted" ranking stale by a few rows until the backfill script
+  // (which is also a reconciliation script) next runs — it never affects
+  // score, review, or results, which all read from attempts.answers instead.
+  try {
+    await db.insert(questionResponses).values(
+      answers.map((a) => ({
+        attemptId: attempt.id,
+        questionId: a.id,
+        studentId,
+        selectedIndex: a.selected,
+        isCorrect: a.selected !== null && a.selected === a.correctIndex,
+      }))
+    );
+  } catch (err) {
+    console.error("Failed to record question_responses for attempt", attempt.id, err);
+  }
 
   return c.json(attempt);
 });

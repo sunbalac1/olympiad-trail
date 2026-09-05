@@ -326,6 +326,8 @@ export default function App() {
   const [setupGrade, setSetupGrade] = useState(null); // always overwritten from profile in openSetup
   const [setupCount, setSetupCount] = useState(10);
   const [setupMinutes, setSetupMinutes] = useState(15);
+  const [examStarting, setExamStarting] = useState(false);
+  const [startError, setStartError] = useState("");
 
   const [examQuestions, setExamQuestions] = useState([]);
   const [examIndex, setExamIndex] = useState(0);
@@ -508,22 +510,30 @@ export default function App() {
     setScreen("setup");
   }
 
-  function startExam() {
-    const pool = gradeQuestions.filter((q) => q.subject === setupSubject && q.grade === setupGrade);
-    // Prefer questions this student hasn't seen yet in this subject, so back-to-back
-    // rounds don't repeat — only reusing already-seen ones once the pool runs out.
-    const seenIds = new Set(
-      attempts.filter((a) => a.subject === setupSubject).flatMap((a) => a.answers.map((ans) => ans.id))
-    );
-    const unseen = shuffle(pool.filter((q) => !seenIds.has(q.id)));
-    const seen = shuffle(pool.filter((q) => seenIds.has(q.id)));
-    const picked = [...unseen, ...seen].slice(0, Math.min(setupCount, pool.length)).map(shuffleQuestion);
-    setExamQuestions(picked);
-    setExamIndex(0);
-    setExamAnswers({});
-    setExamTotalSec(setupMinutes * 60);
-    setRemaining(setupMinutes * 60);
-    setScreen("exam");
+  // Question selection lives server-side (GET /questions/exam) so it can see
+  // every student's history, not just this one's — it still never repeats a
+  // question this student has seen (until their pool runs out), but on top of
+  // that it biases toward questions attempted the least across everyone, so
+  // the whole bank gets even exposure over time.
+  async function startExam() {
+    setStartError("");
+    setExamStarting(true);
+    try {
+      const rows = await api.pickExamQuestions({
+        subject: setupSubject, grade: setupGrade, studentId: currentStudentId, count: setupCount,
+      });
+      const picked = rows.map(mapQuestion).map(shuffleQuestion);
+      setExamQuestions(picked);
+      setExamIndex(0);
+      setExamAnswers({});
+      setExamTotalSec(setupMinutes * 60);
+      setRemaining(setupMinutes * 60);
+      setScreen("exam");
+    } catch (e) {
+      setStartError(e.message);
+    } finally {
+      setExamStarting(false);
+    }
   }
 
   const submitExam = useCallback(async () => {
@@ -687,7 +697,8 @@ export default function App() {
           count={setupCount} setCount={setSetupCount}
           minutes={setupMinutes} setMinutes={setSetupMinutes}
           available={availableFor(setupSubject)}
-          onBack={() => setScreen("dashboard")}
+          starting={examStarting} startError={startError}
+          onBack={() => { setStartError(""); setScreen("dashboard"); }}
           onStart={startExam}
         />
       )}
@@ -1031,7 +1042,7 @@ function DashboardScreen({ profile, allQuestions, bestScoreBySubject, attempts, 
 /*  Setup                                                               */
 /* ------------------------------------------------------------------ */
 
-function SetupScreen({ subject, setSubject, grade, count, setCount, minutes, setMinutes, available, onBack, onStart }) {
+function SetupScreen({ subject, setSubject, grade, count, setCount, minutes, setMinutes, available, starting, startError, onBack, onStart }) {
   const s = SUBJECTS[subject];
   return (
     <div className="screen fade-in">
@@ -1068,12 +1079,13 @@ function SetupScreen({ subject, setSubject, grade, count, setCount, minutes, set
           <button className="stepper-btn" onClick={() => setMinutes((m) => Math.min(90, m + 1))}><Plus size={15} /></button>
         </div>
 
-        <button className="btn primary full lg" onClick={onStart} disabled={available === 0} style={{ marginTop: 20 }}>
-          <Play size={17} /> Start exam
+        <button className="btn primary full lg" onClick={onStart} disabled={available === 0 || starting} style={{ marginTop: 20 }}>
+          <Play size={17} /> {starting ? "Starting…" : "Start exam"}
         </button>
         {available === 0 && (
           <p className="hint-text">No Grade {grade} questions for {SUBJECTS[subject].label} yet — upload a CSV or add one manually in the question bank.</p>
         )}
+        {startError && <p className="hint-text" style={{ color: "#C6435E" }}>{startError}</p>}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
 
 // A "family" — signs up with email/password, owns a set of student profiles.
 export const accounts = pgTable("accounts", {
@@ -49,6 +49,32 @@ export const attempts = pgTable("attempts", {
   answers: jsonb("answers").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// One row per question answered within an attempt — a queryable, indexable
+// event log. This is deliberately separate from attempts.answers (which stays
+// a JSONB point-in-time snapshot powering review/results screens): this table
+// exists to make "how many times has question X been attempted" and "has this
+// student already seen question X" fast, indexed queries instead of requiring
+// a JSONB unnest over every attempt. studentId is denormalized off attemptId
+// (same pattern as flags.studentId alongside flags.questionId) since it's
+// fixed forever at insert time and is exactly what the seen-by-this-student
+// check needs without a join. No unique constraint on (student_id,
+// question_id) — a student can legitimately see the same question again once
+// their unseen pool for a subject is exhausted (see startExam in
+// OlympiadTrail.jsx), so a duplicate here is expected, not an error.
+export const questionResponses = pgTable("question_responses", {
+  id: serial("id").primaryKey(),
+  attemptId: integer("attempt_id").notNull().references(() => attempts.id, { onDelete: "cascade" }),
+  questionId: integer("question_id").notNull().references(() => questions.id, { onDelete: "cascade" }),
+  studentId: integer("student_id").notNull().references(() => students.id, { onDelete: "cascade" }),
+  selectedIndex: integer("selected_index"), // nullable = skipped
+  isCorrect: boolean("is_correct").notNull(), // snapshot from the answer's own correctIndex, not a live join to questions
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  questionIdx: index("question_responses_question_id_idx").on(table.questionId),
+  studentQuestionIdx: index("question_responses_student_question_idx").on(table.studentId, table.questionId),
+  attemptIdx: index("question_responses_attempt_id_idx").on(table.attemptId),
+}));
 
 // A "this question seems wrong" report raised by a student during review.
 export const flags = pgTable("flags", {

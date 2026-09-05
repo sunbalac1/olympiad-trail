@@ -45,6 +45,7 @@ export const api = {
   deleteStudent: (id) => request(`/students/${id}`, { method: "DELETE" }),
 
   listQuestions: (params) => request(`/questions${qs(params)}`),
+  pickExamQuestions: (params) => request(`/questions/exam${qs(params)}`),
 
   submitAttempt: (attempt) => request("/attempts", { method: "POST", body: JSON.stringify(attempt) }),
   listAttempts: (studentId) => request(`/attempts/student/${studentId}`),
