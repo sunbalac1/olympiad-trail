@@ -3,6 +3,7 @@ import { and, eq, ilike, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { questions, flags, attempts, students, accounts, questionResponses } from "../db/schema.js";
 import { requireAuth, requireAdmin } from "../lib/auth.js";
+import { hashPassword } from "../lib/password.js";
 
 export const adminRoutes = new Hono();
 adminRoutes.use("*", requireAuth, requireAdmin);
@@ -202,4 +203,38 @@ adminRoutes.get("/responses", async (c) => {
 
   rows.sort((a, b) => new Date(b.attemptDate) - new Date(a.attemptDate));
   return c.json(rows);
+});
+
+// Every family account, with how many student profiles each has — the
+// picker list behind the password-reset action below. No password data
+// leaves this endpoint, just enough to find the right account.
+adminRoutes.get("/accounts", async (c) => {
+  const db = getDb(c.env.DATABASE_URL);
+  const rows = await db.select({
+    id: accounts.id, email: accounts.email, isAdmin: accounts.isAdmin, createdAt: accounts.createdAt,
+    studentCount: sql`count(${students.id})`.mapWith(Number),
+  }).from(accounts)
+    .leftJoin(students, eq(students.accountId, accounts.id))
+    .groupBy(accounts.id)
+    .orderBy(accounts.email);
+  return c.json(rows);
+});
+
+// Admin-initiated password reset — for a parent locked out of their own
+// account. The admin sets (or the UI generates) the new password and relays
+// it to the family directly; there's no email infra in this app to send a
+// reset link through, so this is the whole flow.
+adminRoutes.post("/accounts/:id/reset-password", async (c) => {
+  const id = Number(c.req.param("id"));
+  const { newPassword } = await c.req.json().catch(() => ({}));
+  if (!newPassword || newPassword.length < 8) {
+    return c.json({ error: "A new password (8+ characters) is required." }, 400);
+  }
+  const db = getDb(c.env.DATABASE_URL);
+  const passwordHash = await hashPassword(newPassword);
+  const [account] = await db.update(accounts).set({ passwordHash })
+    .where(eq(accounts.id, id))
+    .returning({ id: accounts.id, email: accounts.email });
+  if (!account) return c.json({ error: "Account not found." }, 404);
+  return c.json({ ok: true, email: account.email });
 });

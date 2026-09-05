@@ -61,4 +61,6 @@ export const api = {
   adminResolveFlag: (id) => request(`/admin/flags/${id}/resolve`, { method: "POST" }),
   adminAnalytics: () => request("/admin/analytics"),
   adminListResponses: () => request("/admin/responses"),
+  adminListAccounts: () => request("/admin/accounts"),
+  adminResetPassword: (id, newPassword) => request(`/admin/accounts/${id}/reset-password`, { method: "POST", body: JSON.stringify({ newPassword }) }),
 };

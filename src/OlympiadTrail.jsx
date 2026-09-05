@@ -350,6 +350,8 @@ export default function App() {
   const [adminAnalyticsLoading, setAdminAnalyticsLoading] = useState(false);
   const [adminResponses, setAdminResponses] = useState([]);
   const [adminResponsesLoading, setAdminResponsesLoading] = useState(false);
+  const [adminAccounts, setAdminAccounts] = useState([]);
+  const [adminAccountsLoading, setAdminAccountsLoading] = useState(false);
 
   // on load, check for an existing session before deciding whether to show the auth screen
   useEffect(() => {
@@ -392,6 +394,14 @@ export default function App() {
     if (screen !== "admin-responses" || !account?.isAdmin) return;
     setAdminResponsesLoading(true);
     api.adminListResponses().then(setAdminResponses).finally(() => setAdminResponsesLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, account?.isAdmin]);
+
+  // load the family-account list whenever the accounts screen is opened
+  useEffect(() => {
+    if (screen !== "admin-accounts" || !account?.isAdmin) return;
+    setAdminAccountsLoading(true);
+    api.adminListAccounts().then(setAdminAccounts).finally(() => setAdminAccountsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, account?.isAdmin]);
 
@@ -742,6 +752,7 @@ export default function App() {
           onResolveFlag={async (id) => { await api.adminResolveFlag(id); await refreshAdminFlags(); }}
           onViewAnalytics={() => setScreen("admin-analytics")}
           onViewResponses={() => setScreen("admin-responses")}
+          onViewAccounts={() => setScreen("admin-accounts")}
           onBack={() => setScreen("profiles")}
         />
       )}
@@ -749,6 +760,14 @@ export default function App() {
       {screen === "admin-analytics" && account.isAdmin && (
         <AdminAnalyticsScreen
           data={adminAnalytics} loading={adminAnalyticsLoading}
+          onBack={() => setScreen("admin")}
+        />
+      )}
+
+      {screen === "admin-accounts" && account.isAdmin && (
+        <AdminAccountsScreen
+          accounts={adminAccounts} loading={adminAccountsLoading}
+          onResetPassword={async (id, newPassword) => api.adminResetPassword(id, newPassword)}
           onBack={() => setScreen("admin")}
         />
       )}
@@ -1665,6 +1684,121 @@ function AdminResponsesScreen({ responses, loading, onBack }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Admin — family accounts + password reset                          */
+/* ------------------------------------------------------------------ */
+
+function generatePassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
+function AdminAccountsScreen({ accounts, loading, onResetPassword, onBack }) {
+  const [search, setSearch] = useState("");
+  const [openId, setOpenId] = useState(null);
+  const [pwDraft, setPwDraft] = useState("");
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState(null); // { email, password }
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return accounts;
+    return accounts.filter((a) => a.email.toLowerCase().includes(term));
+  }, [accounts, search]);
+
+  function openReset(a) {
+    setOpenId(a.id);
+    setPwDraft(generatePassword());
+    setError("");
+  }
+
+  async function confirmReset(a) {
+    if (!pwDraft || pwDraft.length < 8) { setError("Password must be at least 8 characters."); return; }
+    setBusyId(a.id);
+    setError("");
+    try {
+      await onResetPassword(a.id, pwDraft);
+      setResult({ email: a.email, password: pwDraft });
+      setOpenId(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="screen screen-wide fade-in">
+      <button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Back</button>
+      <div className="row-between">
+        <div>
+          <h1 className="page-title"><Users size={22} style={{ verticalAlign: "-4px", marginRight: 6 }} />Family accounts</h1>
+          <p className="page-sub">Reset a family's password when they're locked out. There's no email set up in this app to send a reset link, so you set the new password here and share it with them directly.</p>
+        </div>
+      </div>
+      {loading && <p className="hint-text">Loading accounts…</p>}
+
+      {result && (
+        <div className="setup-card" style={{ marginBottom: 16, borderColor: "#3AA76D" }}>
+          <div className="field-label" style={{ margin: 0 }}>Password reset for {result.email}</div>
+          <p className="hint-text" style={{ marginTop: 4 }}>
+            New password: <code style={{ fontSize: 15, fontWeight: 600 }}>{result.password}</code> — share this with them now; it won't be shown again.
+          </p>
+          <button className="mini-btn" onClick={() => setResult(null)}>Dismiss</button>
+        </div>
+      )}
+
+      <input className="text-input" style={{ maxWidth: 320, marginBottom: 12 }} placeholder="Filter by email"
+        value={search} onChange={(e) => setSearch(e.target.value)} />
+
+      <div className="all-q-table-wrap">
+        <table className="all-q-table">
+          <thead>
+            <tr><th>Email</th><th>Students</th><th>Role</th><th>Joined</th><th></th></tr>
+          </thead>
+          <tbody>
+            {filtered.map((a) => (
+              <tr key={a.id}>
+                <td>{a.email}</td>
+                <td>{a.studentCount}</td>
+                <td>{a.isAdmin ? <span className="tag" style={{ background: "#EEF1F6", color: "#5B6478" }}>Admin</span> : "Family"}</td>
+                <td>{new Date(a.createdAt).toLocaleDateString()}</td>
+                <td>
+                  {openId === a.id ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 240 }}>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input className="text-input" style={{ width: 150 }} value={pwDraft}
+                          onChange={(e) => setPwDraft(e.target.value)} placeholder="New password" />
+                        <button className="mini-btn" onClick={() => setPwDraft(generatePassword())} title="Generate a random password">
+                          <Sparkles size={13} />
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <button className="mini-btn" disabled={busyId === a.id} onClick={() => confirmReset(a)}>
+                          {busyId === a.id ? "Setting…" : "Set password"}
+                        </button>
+                        <button className="mini-btn" onClick={() => { setOpenId(null); setError(""); }}>Cancel</button>
+                      </div>
+                      {error && <span style={{ color: "#C0392B", fontSize: 12 }}>{error}</span>}
+                    </div>
+                  ) : (
+                    <button className="mini-btn" onClick={() => openReset(a)} title="Reset password">
+                      <Lock size={13} /> Reset password
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {filtered.length === 0 && !loading && <div className="empty-box">No accounts match that filter.</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  All questions (admin) — full table with grade / subject / topic filters */
 /* ------------------------------------------------------------------ */
 
@@ -1752,7 +1886,7 @@ function AllQuestionsTable({ allQuestions, onDelete }) {
 
 function ManageScreen({ allQuestions, loading, newQ, setNewQ, onAdd, onDeleteQuestion,
   onCSVUpload, onDownloadTemplate, csvImport, setCsvImport,
-  flags, onResolveFlag, onViewAnalytics, onViewResponses, onBack }) {
+  flags, onResolveFlag, onViewAnalytics, onViewResponses, onViewAccounts, onBack }) {
 
   const fileRef = useRef(null);
 
@@ -1780,6 +1914,9 @@ function ManageScreen({ allQuestions, loading, newQ, setNewQ, onAdd, onDeleteQue
           </button>
           <button className="admin-entry" onClick={onViewResponses}>
             <Download size={13} /> Response dump
+          </button>
+          <button className="admin-entry" onClick={onViewAccounts}>
+            <Lock size={13} /> Accounts
           </button>
         </div>
       </div>
