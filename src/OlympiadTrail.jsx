@@ -852,7 +852,18 @@ export default function App() {
 /*  Shell / Header                                                      */
 /* ------------------------------------------------------------------ */
 
-function Shell({ children }) { return <div className="shell">{children}</div>; }
+function Shell({ children }) {
+  return (
+    <div className="shell">
+      {children}
+      <footer className="app-footer">
+        <span>© {new Date().getFullYear()} Olympiad Trail</span>
+        <span className="app-footer-dot">·</span>
+        <span>Support &amp; questions: <a href="mailto:sheave-banyan2p@icloud.com">sheave-banyan2p@icloud.com</a></span>
+      </footer>
+    </div>
+  );
+}
 
 function Header({ profile, level, isAdmin, account, onHome, onSwitch, onSyllabus, onLogout }) {
   return (
@@ -2230,7 +2241,7 @@ function GlobalStyle() {
           radial-gradient(800px 460px at 100% 0%, rgba(124,111,239,.16), transparent 55%),
           radial-gradient(760px 420px at 45% 105%, rgba(95,208,196,.08), transparent 55%),
           var(--bg);
-        min-height: 100%; padding-bottom: 48px;
+        min-height: 100%; padding-bottom: 8px;
       }
       .shell * { box-sizing: border-box; }
       /* Browsers don't inherit color into <button>/<select> by default (they
@@ -2240,6 +2251,11 @@ function GlobalStyle() {
          (.admin-pill, .btn.primary, .chip-active, ...) still wins over this. */
       :where(.shell) :where(button, select) { color: inherit; font-family: inherit; }
       .loading { padding: 60px 20px; text-align: center; color: var(--ink-soft); font-family: 'IBM Plex Mono', monospace; }
+
+      .app-footer { max-width:1120px; margin:56px auto 0; padding:18px 22px; border-top:1px solid var(--line); display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:8px; font-size:12px; color:var(--ink-soft); text-align:center; }
+      .app-footer-dot { opacity:.5; }
+      .app-footer a { color:var(--ink-soft); text-decoration:underline; text-underline-offset:2px; }
+      .app-footer a:hover { color:var(--ink); }
 
       /* header */
       .header { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); background:var(--card); position:sticky; top:0; z-index:5; }
