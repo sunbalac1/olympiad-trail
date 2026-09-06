@@ -551,41 +551,56 @@ export default function App() {
     }
   }
 
+  // Guards against submitting the same exam twice — a double-click on
+  // "Submit" and the auto-submit-on-timeout racing it were both firing
+  // separate POST /attempts calls, producing duplicate rows in the
+  // student's attempt history for a single exam.
+  const submittingRef = useRef(false);
+
   const submitExam = useCallback(async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     clearInterval(timerRef.current);
-    setExamQuestions((qs) => {
-      const answersArr = qs.map((q) => ({
+    try {
+      const answersArr = examQuestions.map((q) => ({
         id: q.id, subject: q.subject, grade: q.grade,
         question: q.q, options: q.options,
         correctIndex: q.correct, solution: q.solution,
         selected: examAnswers[q.id] !== undefined ? examAnswers[q.id] : null,
       }));
-      (async () => {
-        const submitted = await api.submitAttempt({
-          studentId: currentStudentId, subject: setupSubject, grade: setupGrade,
-          timeTakenSec: examTotalSec - remaining, answers: answersArr,
-        });
-        const attempt = mapAttempt(submitted);
-        setAttempts((prev) => [attempt, ...prev]);
-        setLastAttempt(attempt);
-        setReviewFilter("all");
-        setScreen("results");
-      })();
-      return qs;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examAnswers, setupSubject, setupGrade, examTotalSec, remaining, currentStudentId]);
+      const submitted = await api.submitAttempt({
+        studentId: currentStudentId, subject: setupSubject, grade: setupGrade,
+        timeTakenSec: examTotalSec - remaining, answers: answersArr,
+      });
+      const attempt = mapAttempt(submitted);
+      setAttempts((prev) => [attempt, ...prev]);
+      setLastAttempt(attempt);
+      setReviewFilter("all");
+      setScreen("results");
+    } finally {
+      submittingRef.current = false;
+    }
+  }, [examQuestions, examAnswers, setupSubject, setupGrade, examTotalSec, remaining, currentStudentId]);
+
+  // The interval below is set up once per exam (deps=[screen]) so its
+  // countdown doesn't drift or reset every render. That means the callback
+  // it registers can only ever close over the submitExam from that first
+  // render — stale forever after, with examAnswers still at its initial
+  // empty {}. Routing the call through a ref that's kept in sync with the
+  // latest submitExam is what makes the auto-submit-on-timeout actually see
+  // whatever the student had answered by the time the clock ran out.
+  const submitExamRef = useRef(submitExam);
+  useEffect(() => { submitExamRef.current = submitExam; }, [submitExam]);
 
   useEffect(() => {
     if (screen !== "exam") return;
     timerRef.current = setInterval(() => {
       setRemaining((r) => {
-        if (r <= 1) { clearInterval(timerRef.current); submitExam(); return 0; }
+        if (r <= 1) { clearInterval(timerRef.current); submitExamRef.current(); return 0; }
         return r - 1;
       });
     }, 1000);
     return () => clearInterval(timerRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
 
   function selectAnswer(qId, idx) {
