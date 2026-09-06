@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { topicsForSubject, topicLabel } from "./topics";
 import { misconceptionsFor, misconceptionLabel } from "./misconceptions";
+import { SYLLABUS, SYLLABUS_GRADES } from "./syllabus";
 import { api, mapQuestion, mapAttempt } from "./api";
 
 /* ------------------------------------------------------------------ */
@@ -669,10 +670,24 @@ export default function App() {
 
   if (authLoading) return <Shell><div className="loading">Loading your practice trail…</div></Shell>;
 
+  // Logged-out access to the syllabus is handled here, before the auth gate,
+  // so it works as a public reference page with no account needed. Logged-in
+  // access is handled further down inside the normal screen tree instead —
+  // that keeps the Header (sign-out, switch profile) visible while browsing it.
+  if (!account && screen === "syllabus") {
+    return (
+      <Shell>
+        <SyllabusScreen onBack={() => setScreen("profiles")} />
+        <GlobalStyle />
+      </Shell>
+    );
+  }
+
   if (!account) {
     return (
       <Shell>
-        <AuthScreen mode={authMode} setMode={setAuthMode} error={authError} onSubmit={handleAuthSubmit} />
+        <AuthScreen mode={authMode} setMode={setAuthMode} error={authError} onSubmit={handleAuthSubmit}
+          onViewSyllabus={() => setScreen("syllabus")} />
         <GlobalStyle />
       </Shell>
     );
@@ -684,7 +699,12 @@ export default function App() {
         account={account}
         onHome={() => setScreen(currentProfile ? "dashboard" : "profiles")}
         onSwitch={() => setScreen("profiles")}
+        onSyllabus={() => setScreen("syllabus")}
         onLogout={handleLogout} />
+
+      {screen === "syllabus" && (
+        <SyllabusScreen onBack={() => setScreen(currentProfile ? "dashboard" : "profiles")} />
+      )}
 
       {screen === "profiles" && (
         <ProfilesScreen
@@ -805,7 +825,7 @@ export default function App() {
 
 function Shell({ children }) { return <div className="shell">{children}</div>; }
 
-function Header({ profile, level, isAdmin, account, onHome, onSwitch, onLogout }) {
+function Header({ profile, level, isAdmin, account, onHome, onSwitch, onSyllabus, onLogout }) {
   return (
     <div className="header">
       <button className="brand" onClick={onHome}>
@@ -816,6 +836,9 @@ function Header({ profile, level, isAdmin, account, onHome, onSwitch, onLogout }
         </span>
       </button>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button className="mini-btn" onClick={onSyllabus} title="View the Olympiad syllabus">
+          <BookOpen size={13} /> Syllabus
+        </button>
         {isAdmin ? (
           <button className="profile-pill admin-pill" onClick={onSwitch} title="Exit admin">
             <Shield size={14} /> <span>Admin</span> <LogOut size={13} />
@@ -915,7 +938,7 @@ function ProfilesScreen({
 /*  Family sign-in / sign-up                                           */
 /* ------------------------------------------------------------------ */
 
-function AuthScreen({ mode, setMode, error, onSubmit }) {
+function AuthScreen({ mode, setMode, error, onSubmit, onViewSyllabus }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const isSignup = mode === "signup";
@@ -942,6 +965,9 @@ function AuthScreen({ mode, setMode, error, onSubmit }) {
             <li><Check size={15} /> Instant scoring & worked solutions</li>
             <li><BarChart3 size={15} /> Analytics to spot exactly what to improve</li>
           </ul>
+          <button className="link-btn analytics-link" style={{ marginTop: 4 }} onClick={onViewSyllabus}>
+            <BookOpen size={15} /> Browse the full syllabus →
+          </button>
         </div>
 
         <div className="auth-form-col">
@@ -975,6 +1001,72 @@ function AuthScreen({ mode, setMode, error, onSubmit }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Syllabus — reference page, reachable logged-in or logged-out       */
+/* ------------------------------------------------------------------ */
+
+function SyllabusScreen({ onBack }) {
+  function jumpTo(grade) {
+    document.getElementById(`syllabus-grade-${grade}`)?.scrollIntoView({ block: "start" });
+  }
+
+  return (
+    <div className="screen screen-wide fade-in">
+      <button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Back</button>
+      <h1 className="page-title"><BookOpen size={22} style={{ verticalAlign: "-4px", marginRight: 6 }} />Olympiad syllabus</h1>
+      <p className="page-sub">
+        A high-level look at what each grade and subject covers. Jump to a grade below, or scroll through the whole page.
+      </p>
+
+      <div className="chip-row syllabus-nav" style={{ "--accent": "#E6486B", "--accent-soft": "#FCE4E9" }}>
+        {GRADES.map((g) => {
+          const has = !!SYLLABUS[g];
+          return (
+            <button key={g} className="chip" disabled={!has}
+              onClick={() => jumpTo(g)} title={has ? undefined : "Coming soon"}>
+              Grade {g}{!has && " (soon)"}
+            </button>
+          );
+        })}
+      </div>
+
+      {SYLLABUS_GRADES.map((g) => (
+        <div key={g} id={`syllabus-grade-${g}`} className="syllabus-grade-section">
+          <h2 className="section-title">Grade {g}</h2>
+          <div className="syllabus-subject-grid">
+            {Object.entries(SUBJECTS).map(([key, s]) => {
+              const groups = SYLLABUS[g][key];
+              if (!groups) return null;
+              return (
+                <div key={key} className="syllabus-subject-card" style={{ "--accent": s.color, "--accent-soft": s.soft }}>
+                  <div className="syllabus-subject-head"><s.icon size={18} /> {s.label}</div>
+                  {groups.map((group) => (
+                    <div key={group.heading} className="syllabus-topic-group">
+                      <div className="syllabus-topic-heading">{group.heading}</div>
+                      <ul className="syllabus-item-list">
+                        {group.items.map((item, i) => {
+                          const idx = item.indexOf(": ");
+                          const term = idx > -1 ? item.slice(0, idx) : null;
+                          const rest = idx > -1 ? item.slice(idx + 2) : item;
+                          return <li key={i}>{term && <strong>{term}: </strong>}{rest}</li>;
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      <p className="hint-text" style={{ marginTop: 8, marginBottom: 24 }}>
+        More grades are being added soon — Grades 5, 7, and 8 follow a similar structure, scaled to that grade's level.
+      </p>
     </div>
   );
 }
@@ -2229,9 +2321,23 @@ function GlobalStyle() {
       .chip { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:999px; border:1.5px solid var(--line); background:var(--card); font-size:13px; font-weight:600; cursor:pointer; color:var(--ink); transition:transform .15s ease; }
       .chip:hover { transform:translateY(-1px); }
       .chip-active { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+      .chip:disabled { opacity:.45; cursor:not-allowed; }
+      .chip:disabled:hover { transform:none; }
       .stepper { display:flex; align-items:center; gap:16px; }
       .stepper-btn { width:34px; height:34px; border-radius:9px; border:1px solid var(--line); background:var(--card); cursor:pointer; display:flex; align-items:center; justify-content:center; }
       .stepper-value { font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:16px; min-width:64px; text-align:center; }
+
+      /* syllabus */
+      .syllabus-nav { margin-bottom:8px; position:sticky; top:0; background:var(--bg); padding:10px 0; z-index:2; }
+      .syllabus-grade-section { margin-top:10px; scroll-margin-top:12px; }
+      .syllabus-subject-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin-bottom:8px; }
+      .syllabus-subject-card { background:var(--card); border:1px solid var(--line); border-top:3px solid var(--accent); border-radius:16px; padding:18px; }
+      .syllabus-subject-head { display:flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:16px; color:var(--accent); margin-bottom:12px; }
+      .syllabus-topic-group { margin-bottom:14px; }
+      .syllabus-topic-group:last-child { margin-bottom:0; }
+      .syllabus-topic-heading { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin-bottom:6px; }
+      .syllabus-item-list { margin:0; padding-left:18px; display:flex; flex-direction:column; gap:5px; }
+      .syllabus-item-list li { font-size:13.5px; line-height:1.5; color:var(--ink); }
 
       /* exam */
       .exam-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
