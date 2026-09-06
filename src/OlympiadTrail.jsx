@@ -2233,6 +2233,12 @@ function GlobalStyle() {
         min-height: 100%; padding-bottom: 48px;
       }
       .shell * { box-sizing: border-box; }
+      /* Browsers don't inherit color into <button>/<select> by default (they
+         fall back to a system black), so any label or icon sitting inside
+         one silently ignores --ink unless we force it back to inherit here.
+         Zero-specificity via :where() so every existing explicit color rule
+         (.admin-pill, .btn.primary, .chip-active, ...) still wins over this. */
+      :where(.shell) :where(button, select) { color: inherit; font-family: inherit; }
       .loading { padding: 60px 20px; text-align: center; color: var(--ink-soft); font-family: 'IBM Plex Mono', monospace; }
 
       /* header */
